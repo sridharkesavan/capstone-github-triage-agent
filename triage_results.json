@@ -1,0 +1,39 @@
+[
+  {
+    "issue_number": 3,
+    "issue_title": "How do I integrate with GitHub Actions?",
+    "classification": "question",
+    "confidence": 0.5,
+    "suggested_labels": [
+      "needs-triage"
+    ],
+    "response_comment": "Thank you for opening this issue. We'll review it soon.",
+    "reasoning": "Default classification due to parsing error"
+  },
+  {
+    "issue_number": null,
+    "issue_title": "Add support for custom label templates",
+    "classification": "feature",
+    "confidence": 0.7,
+    "suggested_labels": [
+      "enhancement",
+      "feature-request",
+      "needs-more-info"
+    ],
+    "response_comment": "Thanks for opening this issue! Based on the title, we're treating this as a feature request for custom label templates.\n\nThe description seems to contain example entries for three separate topics (a bug, a feature, and a question) rather than details about the feature itself. To help us evaluate this request, could you add:\n\n1. **Use case:** What problem would custom label templates solve for you?\n2. **Expected behavior:** How should templates be defined (e.g., a YAML/JSON config file in the repo, a CLI flag)?\n3. **Example:** A sample template showing the labels, colors, or naming conventions you'd like.\n4. **Alternatives considered:** Any workarounds you're using today.\n\nIf you also want to report the empty-repository failure or ask about GitHub Actions integration, please open separate issues for those so each can be tracked properly.\n\nThanks again for the suggestion!",
+    "reasoning": "The title is a clear feature request ('Add support for...'). The body doesn't describe the feature. Instead it lists three sample issue titles labeled Bug, Feature, and Question, which looks like pasted test data or a template placeholder. Since the title and one body line both point to the custom label templates feature, 'feature' is the best fit. Confidence is lowered because the body is ambiguous and could indicate a test or misfiled issue. The response asks for clarification and recommends splitting the unrelated bug and question into their own issues. The issue number was not provided, so it is set to null."
+  },
+  {
+    "issue_number": null,
+    "issue_title": "Agent fails on empty repository",
+    "classification": "bug",
+    "confidence": 0.6,
+    "suggested_labels": [
+      "bug",
+      "needs-more-info",
+      "needs-triage"
+    ],
+    "response_comment": "Thanks for opening this issue!\n\nWe're treating this as a bug report based on the title, \"Agent fails on empty repository.\" To help us investigate, could you please share:\n\n1. **Steps to reproduce:** How did you run the agent, and how was the repository set up? For example, no commits, no issues, or no labels.\n2. **Expected behavior:** What should the agent do when the repository is empty?\n3. **Actual behavior:** What happened instead? Please include any error messages, stack traces, or logs.\n4. **Environment:** Agent version, how it is deployed (local, GitHub Actions, etc.), and any relevant configuration.\n\nWe also noticed the description includes two unrelated items:\n- **Feature request:** \"Add support for custom label templates\"\n- **Question:** \"How do I integrate with GitHub Actions?\"\n\nTo help us track each one properly, please open a separate issue for the feature request. For the integration question, please check our documentation or Discussions, or open a separate question issue if it isn't covered there.\n\nThanks again for helping improve the project!",
+    "reasoning": "The title clearly describes a failure ('Agent fails on empty repository'), which fits the bug category. Confidence is reduced because the body has no reproduction steps, error output, or environment details. The body also looks like a list of sample test cases (one bug, one feature, one question) rather than a real report. It may have been pasted from a template or test fixture. The bug is the primary item and matches the title, so 'bug' is the best fit. The response asks for the missing details and suggests moving the unrelated feature and question into separate issues. No issue number was provided, so issue_number is set to null."
+  }
+]
