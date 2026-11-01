@@ -122,26 +122,35 @@ def triage():
             }), 200
         
         # Propose actions
+        # Start from a clean slate: drop proposals left over from earlier runs
         pending_approvals.clear()
-        for i, result in enumerate(results):
-            action_id = f"action_{i}"
+        agent.hitl_gate.clear_pending()
+
+        for result in results:
+            before = len(agent.hitl_gate.pending_actions)
             agent.propose_github_action(result)
-            
-            # Store pending approval
-            pending_approvals[action_id] = {
-                "index": i,
-                "issue_number": result.get('issue_number'),
-                "issue_title": result.get('issue_title'),
-                "classification": result.get('classification'),
-                "labels": result.get('suggested_labels', []),
-                "comment": result.get('response_comment'),
+
+            # The gate skips invalid results (e.g. a missing issue number)
+            if len(agent.hitl_gate.pending_actions) == before:
+                print(f"[SKIP] No action proposed for: {result.get('issue_title')}")
+                continue
+
+            # Use the Action's own id and values: what you approve is what gets written
+            action = agent.hitl_gate.pending_actions[-1]
+            pending_approvals[action.id] = {
+                "issue_number": action.issue_number,
+                "issue_title": action.issue_title,
+                "classification": action.classification,
+                "labels": action.labels,
+                "comment": action.comment,
                 "approved": False,
                 "result": result
             }
-        
+
         return jsonify({
             "status": "success",
             "issues_found": len(results),
+            "proposed": len(pending_approvals),
             "pending_approvals": list(pending_approvals.keys()),
             "approvals": pending_approvals
         }), 200
@@ -204,10 +213,9 @@ def approve_action():
             return jsonify({"error": f"Action {action_id} not found"}), 404
         
         approval = pending_approvals[action_id]
-        index = approval['index']
         
         # Approve in agent's gate
-        if agent.hitl_gate.approve_action(index, note=note):
+        if agent.hitl_gate.approve_by_id(action_id, note=note):
             approval['approved'] = True
             approval['approval_note'] = note
             
@@ -251,10 +259,9 @@ def reject_action():
             return jsonify({"error": f"Action {action_id} not found"}), 404
         
         approval = pending_approvals[action_id]
-        index = approval['index']
         
         # Reject in agent's gate
-        if agent.hitl_gate.reject_action(index, reason=reason):
+        if agent.hitl_gate.reject_by_id(action_id, reason=reason):
             del pending_approvals[action_id]
             
             return jsonify({
@@ -292,7 +299,10 @@ def execute():
         if not agent or not agent.hitl_gate:
             return jsonify({"error": "HITL gate not initialized"}), 400
         
-        approved = agent.hitl_gate.get_approved_actions()
+        # Log the decisions first, then take the approved actions out of the
+        # gate so each approval can only be executed once
+        agent.hitl_gate.save_approvals("approval_log.json")
+        approved = agent.hitl_gate.pop_approved()
         
         if not approved:
             return jsonify({
@@ -321,11 +331,10 @@ def execute():
                 "actions": actions_taken
             })
         
-        # Save approval log
-        agent.hitl_gate.save_approvals("approval_log.json")
         
-        # Clear pending approvals
-        pending_approvals.clear()
+        # Remove only the executed proposals; undecided ones stay pending
+        for aid in [k for k, v in pending_approvals.items() if v.get('approved')]:
+            del pending_approvals[aid]
         
         # Log execution
         execution_history.append({

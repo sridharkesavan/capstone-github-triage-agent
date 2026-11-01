@@ -6,6 +6,7 @@ This gate is structurally enforced — the agent cannot bypass it.
 """
 
 import json
+import uuid
 from typing import Optional, Literal
 
 
@@ -38,6 +39,7 @@ class Action:
         self.comment = comment
         self.approved = False
         self.approval_note = None
+        self.id = uuid.uuid4().hex[:8]
     
     def display(self) -> str:
         """Return a formatted display of the proposed action."""
@@ -125,6 +127,39 @@ class HITLGate:
             print(f"[REJECTED] Issue #{action.issue_number}: {reason or 'No reason provided'}")
             return True
         return False
+    
+    def _pop_pending_by_id(self, action_id: str):
+        """Remove and return the pending action with this id, or None."""
+        for i, action in enumerate(self.pending_actions):
+            if action.id == action_id:
+                return self.pending_actions.pop(i)
+        return None
+
+    def approve_by_id(self, action_id: str, note: str = "") -> bool:
+        action = self._pop_pending_by_id(action_id)
+        if action is None:
+            return False
+        action.approved = True
+        action.approval_note = note
+        self.approved_actions.append(action)
+        return True
+
+    def reject_by_id(self, action_id: str, reason: str = "") -> bool:
+        action = self._pop_pending_by_id(action_id)
+        if action is None:
+            return False
+        action.approval_note = reason
+        self.rejected_actions.append(action)
+        return True
+
+    def clear_pending(self) -> None:
+        """Drop all pending proposals (used when a new triage run starts)."""
+        self.pending_actions.clear()
+
+    def pop_approved(self) -> list:
+        """Return approved actions and empty the list, so nothing runs twice."""
+        done, self.approved_actions = self.approved_actions, []
+        return [a for a in done if a.approved is True]
     
     def get_pending_actions(self) -> list[Action]:
         """Return list of pending actions awaiting approval."""
