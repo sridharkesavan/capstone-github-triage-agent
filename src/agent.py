@@ -153,6 +153,11 @@ class GitHubTriageAgent:
                     "reasoning": "Default classification due to parsing error"
                 }
             
+            # Issue number and title come from GitHub, never from the model
+            if isinstance(classification, dict):
+                classification["issue_number"] = issue["number"]
+                classification["issue_title"] = issue["title"]
+
             classification = enforce_label_vocabulary(classification)
             return classification
         
