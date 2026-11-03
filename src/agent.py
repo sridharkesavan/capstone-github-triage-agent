@@ -131,12 +131,11 @@ class GitHubTriageAgent:
             # Try to extract JSON from the response
             try:
                 # Handle case where response is wrapped in markdown code blocks
-                if "```json" in response_text:
-                    json_str = response_text.split("```json")[1].split("```")[0].strip()
-                elif "```" in response_text:
-                    json_str = response_text.split("```")[1].split("```")[0].strip()
-                else:
-                    json_str = response_text
+                # Take everything from the first { to the last }. Splitting on code fences is wrong,
+                # because the comment text itself can contain code blocks.
+                start = response_text.find("{")
+                end = response_text.rfind("}")
+                json_str = response_text[start:end + 1] if start != -1 and end > start else response_text
                 
                 classification = json.loads(json_str)
             except (json.JSONDecodeError, IndexError) as e:
