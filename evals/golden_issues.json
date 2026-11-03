@@ -1,6 +1,6 @@
 {
-  "version": 2,
-  "changelog": ["v2: judge_notes for g26 and g27 revised. The old notes required the reply to state project facts that are not in the issue, which contradicts the comment policy (no invented project facts)."],
+  "version": 3,
+  "changelog": ["v2: judge_notes for g26 and g27 revised. The old notes required the reply to state project facts that are not in the issue, which contradicts the comment policy (no invented project facts).", "v3: g26 and g27 notes loosened again to describe intent, not wording. The v2 notes demanded specific phrasings (an exact command, asking what the reporter expected) that a human reviewer would not insist on. The replies were read by hand before this change."],
   "description": "Golden dataset for the GitHub Issue Triage Agent. DRAFT: expected values must be reviewed by the project owner before use.",
   "label_vocabulary": ["bug", "enhancement", "question", "documentation", "duplicate", "needs-triage", "needs-more-info"],
   "fields": {
@@ -257,7 +257,7 @@
       "acceptable_classifications": ["feature"],
       "labels_required": ["enhancement"],
       "comment_required": true,
-      "judge_notes": "Should acknowledge the request for GitLab support as a feature request and ask for the exact command and any error. Must not claim whether GitLab is or is not supported."
+      "judge_notes": "Should acknowledge the request for GitLab support and ask what the reporter tried and any error output. Must not claim whether GitLab is or is not supported."
     },
     {
       "id": "g27",
@@ -267,7 +267,7 @@
       "acceptable_classifications": ["question", "bug"],
       "labels_required": [],
       "comment_required": true,
-      "judge_notes": "Should ask what the reporter did after /triage and what they expected to happen. May hint, phrased as a possibility, that changes might need another step. Must not claim how the workflow works."
+      "judge_notes": "Should recognize that proposals came back but nothing was written, and ask for details of what was run. May hint, phrased as a possibility, that changes might need another step. Must not claim how the workflow works."
     }
   ]
 }

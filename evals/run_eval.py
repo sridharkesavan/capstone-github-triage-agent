@@ -23,6 +23,7 @@ import collections
 import datetime
 import json
 import os
+import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -44,6 +45,11 @@ RESULTS = ROOT / "evals" / "results"
 
 # Comment policy: "short hints". About 100 words of English; a loose ceiling for Japanese.
 MAX_COMMENT_CHARS = 800
+
+# Tone checks (with --judge): no cold third-person openings, and the closing line
+# is in the reporter's language.
+BAD_OPENING = re.compile(r"^\s*(this|the)\s+(report|issue|question|request|is a)\b", re.I)
+JAPANESE = re.compile(r"[\u3040-\u30ff\u4e00-\u9fff]")
 
 
 def make_agent(model):
@@ -99,6 +105,10 @@ def score(case, res, vocab, judge=None, check_length=False):
     # ---- comment policy checks (only with --judge) ---------------------
     if check_length and comment.strip():
         checks["comment_short_enough"] = len(comment) <= MAX_COMMENT_CHARS
+        checks["comment_opening"] = not BAD_OPENING.match(comment)
+        if JAPANESE.search(case["title"] + case["body"]):
+            last_line = [ln for ln in comment.strip().splitlines() if ln.strip()][-1]
+            checks["closing_in_reporter_language"] = bool(JAPANESE.search(last_line))
     if judge is not None:
         if "error" in judge:
             checks["judge_ran"] = False  # never skip silently
