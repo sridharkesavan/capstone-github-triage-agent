@@ -4,13 +4,18 @@ Eval runner for the GitHub Issue Triage Agent (Phase 4).
 Runs the REAL classify_issue() on every case in evals/golden_issues.json and
 scores the result. It never connects to GitHub and never goes near the
 approval gate, so it is safe to run at any time. It does call the Claude API
-(one call per case per repeat), so it costs a little each run.
+(one call per case per repeat, plus one more per case with --judge), so it
+costs a little each run.
 
 Usage (from the repo root):
-    python3 evals/run_eval.py                  # all cases
+    python3 evals/run_eval.py                  # all cases, deterministic checks only
+    python3 evals/run_eval.py --judge          # also check comment policy (length + LLM judge)
     python3 evals/run_eval.py --ids g19,g23    # just a few cases
     python3 evals/run_eval.py --repeat 3       # run each case 3 times, find flaky ones
     python3 evals/run_eval.py --tag baseline   # label the saved results file
+
+Without --judge the scoring is exactly what it was before, so earlier runs stay
+comparable. --judge adds the comment policy checks on top.
 """
 
 import argparse
@@ -36,6 +41,9 @@ from src.agent import GitHubTriageAgent  # noqa: E402
 
 GOLDEN = ROOT / "evals" / "golden_issues.json"
 RESULTS = ROOT / "evals" / "results"
+
+# Comment policy: "short hints". About 100 words of English; a loose ceiling for Japanese.
+MAX_COMMENT_CHARS = 800
 
 
 def make_agent(model):
@@ -66,7 +74,7 @@ def is_fallback(res):
     )
 
 
-def score(case, res, vocab):
+def score(case, res, vocab, judge=None, check_length=False):
     labels = norm(res.get("suggested_labels"))
     comment = res.get("response_comment")
     comment = comment if isinstance(comment, str) else ""
@@ -87,6 +95,20 @@ def score(case, res, vocab):
         s.lower() in comment.lower() for s in case.get("forbidden_in_comment", [])
     )
     checks["not_fallback"] = not is_fallback(res)
+
+    # ---- comment policy checks (only with --judge) ---------------------
+    if check_length and comment.strip():
+        checks["comment_short_enough"] = len(comment) <= MAX_COMMENT_CHARS
+    if judge is not None:
+        if "error" in judge:
+            checks["judge_ran"] = False  # never skip silently
+        else:
+            for name, v in judge["verdicts"].items():
+                if v["pass"] is None:
+                    continue
+                if name == "meets_case_notes" and not case.get("judge_notes"):
+                    continue
+                checks[f"judge_{name}"] = bool(v["pass"])
     return checks, all(checks.values())
 
 
@@ -115,8 +137,16 @@ def main():
     ap.add_argument("--repeat", type=int, default=1, help="runs per case")
     ap.add_argument("--workers", type=int, default=4, help="parallel API calls")
     ap.add_argument("--model", default="claude-opus-5-5", help="must match src/agent.py")
+    ap.add_argument("--judge", action="store_true",
+                    help="add comment policy checks: length limit plus LLM judge")
+    ap.add_argument("--judge-model", default=None, help="defaults to --model")
     ap.add_argument("--tag", default="", help="label added to the results file name")
     args = ap.parse_args()
+
+    judge_model = args.judge_model or args.model
+    judge_comment = None
+    if args.judge:
+        from judge import judge_comment  # evals/judge.py, same folder as this script
 
     data = json.loads(GOLDEN.read_text(encoding="utf-8"))
     vocab = set(norm(data["label_vocabulary"]))
@@ -130,15 +160,21 @@ def main():
 
     agent = make_agent(args.model)
     jobs = [(c, r) for c in cases for r in range(args.repeat)]
-    print(f"Running {len(jobs)} classification(s) on {args.model} ({args.workers} at a time)...")
+    extra = f" + judge on {judge_model}" if args.judge else ""
+    print(f"Running {len(jobs)} classification(s) on {args.model}{extra} ({args.workers} at a time)...")
 
     def work(job):
         case, r = job
         res, secs = run_one(agent, case)
-        checks, ok = score(case, res, vocab)
+        verdict = None
+        comment = res.get("response_comment")
+        if args.judge and isinstance(comment, str) and comment.strip() and not is_fallback(res):
+            verdict = judge_comment(agent.client, judge_model, case["title"],
+                                    case["body"], comment, case.get("judge_notes"))
+        checks, ok = score(case, res, vocab, verdict, check_length=args.judge)
         print(f"  done {case['id']} (run {r + 1}/{args.repeat})", flush=True)
         return {"id": case["id"], "run": r, "ok": ok, "checks": checks,
-                "seconds": secs, "result": res}
+                "seconds": secs, "result": res, "judge": verdict}
 
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         runs = list(pool.map(work, jobs))
@@ -158,6 +194,16 @@ def main():
         note = "  (known limitation)" if "known_limitation" in case_by_id[cid] else ""
         extra = f"  failed: {', '.join(failed)}" if failed else ""
         print(f"  {cid}  {status:<5} {passed}/{len(rs)}  class={got:<10}{extra}{note}")
+        # show the judge's reasons for the first failing run
+        for r in rs:
+            verdicts = (r.get("judge") or {}).get("verdicts") or {}
+            shown = False
+            for name, v in verdicts.items():
+                if f"judge_{name}" in failed and not r["checks"].get(f"judge_{name}", True):
+                    print(f"        {name}: {v['why']}")
+                    shown = True
+            if shown:
+                break
 
     # ---- summary ---------------------------------------------------------
     counted = [r for r in runs if "known_limitation" not in case_by_id[r["id"]]]
@@ -168,6 +214,11 @@ def main():
         print(f"  Known limitations  : {pct(sum(r['ok'] for r in known), len(known))}")
     fallbacks = [r for r in runs if not r["checks"]["not_fallback"]]
     print(f"  Fallback answers   : {len(fallbacks)} of {len(runs)} (parse or API failures)")
+    if args.judge:
+        judged = sum(1 for r in runs if r.get("judge") is not None)
+        errors = sum(1 for r in runs if (r.get("judge") or {}).get("error"))
+        print(f"  Judge              : {judged} replies judged, {errors} judge errors "
+              f"(comment limit {MAX_COMMENT_CHARS} chars)")
 
     print("\n  By check:")
     totals, passes = collections.Counter(), collections.Counter()
@@ -176,7 +227,7 @@ def main():
             totals[k] += 1
             passes[k] += bool(v)
     for k in sorted(totals):
-        print(f"    {k:<22} {pct(passes[k], totals[k])}")
+        print(f"    {k:<34} {pct(passes[k], totals[k])}")
 
     print("\n  By tag:")
     tag_tot, tag_pass = collections.Counter(), collections.Counter()
@@ -198,6 +249,7 @@ def main():
     out = {
         "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
         "model": args.model,
+        "judge_model": judge_model if args.judge else None,
         "repeat": args.repeat,
         "cases_run": len(cases),
         "headline": {
