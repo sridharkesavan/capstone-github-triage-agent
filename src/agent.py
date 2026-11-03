@@ -19,6 +19,7 @@ from anthropic import Anthropic
 
 from .tools import GitHubTools
 from .hitl_gate import HITLGate, Action
+from .guardrails import enforce_label_vocabulary
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -152,6 +153,7 @@ class GitHubTriageAgent:
                     "reasoning": "Default classification due to parsing error"
                 }
             
+            classification = enforce_label_vocabulary(classification)
             return classification
         
         except Exception as e:

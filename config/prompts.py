@@ -54,3 +54,27 @@ RESPONSE_TEMPLATES = {
     "question": "Thank you for the question. This appears to be a support question. Please check our documentation or reach out on our support channels.",
     "duplicate": "Thank you for your report. This appears to be a duplicate of an existing issue. Please refer to the linked issue for updates.",
 }
+
+# --- Phase 4: label vocabulary (single source of truth) ---------------------
+ALLOWED_LABELS = [
+    "bug",
+    "enhancement",
+    "question",
+    "documentation",
+    "duplicate",
+    "needs-triage",
+    "needs-more-info",
+]
+
+_LABEL_LIST = ", ".join(ALLOWED_LABELS)
+
+SYSTEM_PROMPT += f"""
+
+Label rules (strict):
+- suggested_labels may contain ONLY these labels: {_LABEL_LIST}.
+- Never invent, rename or add any other label, even if it seems helpful.
+- Always include one primary label that matches the classification: bug -> "bug", feature -> "enhancement", question -> "question", duplicate -> "duplicate".
+- Add "needs-more-info" when the issue lacks what is needed to act on it, for example no error text, no steps to reproduce, or an empty description.
+- Add "documentation" only when the issue points to a gap in the documentation.
+- Add "needs-triage" for bugs that a maintainer should review.
+"""

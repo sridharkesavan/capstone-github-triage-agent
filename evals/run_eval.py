@@ -77,7 +77,7 @@ def score(case, res, vocab):
     if acceptable is not None:
         checks["classification"] = got_class in acceptable
     checks["required_labels"] = set(norm(case["labels_required"])) <= set(labels)
-    checks["labels_in_vocabulary"] = set(labels) <= vocab
+    checks["labels_in_vocabulary"] = set(labels + norm(res.get("dropped_labels"))) <= vocab  # raw model output, before the guardrail drops anything
     checks["no_forbidden_labels"] = not (
         set(norm(case.get("forbidden_labels", []))) & set(labels)
     )
