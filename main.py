@@ -148,11 +148,15 @@ def triage():
                 "result": result
             }
 
+        if results and not pending_approvals:
+            print(f"[WARN] {len(results)} issue(s) classified but 0 proposed")
         flush()  # send buffered traces before Cloud Run can freeze the instance
         return jsonify({
             "status": "success",
             "issues_found": len(results),
             "proposed": len(pending_approvals),
+            "warning": (f"{len(results)} issue(s) classified but none proposed; check logs for [SKIP] lines"
+                        if results and not pending_approvals else None),
             "pending_approvals": list(pending_approvals.keys()),
             "approvals": pending_approvals
         }), 200
