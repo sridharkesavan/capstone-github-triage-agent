@@ -20,6 +20,7 @@ from anthropic import Anthropic
 from .tools import GitHubTools
 from .hitl_gate import HITLGate, Action
 from .guardrails import enforce_label_vocabulary
+from .tracing import observe, update_generation
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -93,6 +94,7 @@ class GitHubTriageAgent:
             },
         ]
     
+    @observe(name="classify_issue", as_type="generation", capture_input=False, capture_output=False)
     def classify_issue(self, issue: dict) -> dict:
         """
         Classify a single issue using Claude.
@@ -129,6 +131,13 @@ class GitHubTriageAgent:
             if not response_text:
                 raise ValueError("No text block found in response")
             
+            update_generation(
+                model=self.model,
+                input=prompt,
+                output=response_text,
+                metadata={"issue_number": issue["number"], "stop_reason": response.stop_reason},
+            )
+
             # Try to extract JSON from the response
             try:
                 # Handle case where response is wrapped in markdown code blocks

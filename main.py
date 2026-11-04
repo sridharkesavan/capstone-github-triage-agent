@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.agent import GitHubTriageAgent
 from src.hitl_gate import Action
+from src.tracing import flush
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -147,6 +148,7 @@ def triage():
                 "result": result
             }
 
+        flush()  # send buffered traces before Cloud Run can freeze the instance
         return jsonify({
             "status": "success",
             "issues_found": len(results),
