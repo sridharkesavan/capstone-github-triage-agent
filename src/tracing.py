@@ -15,7 +15,7 @@ def update_generation(**kwargs):
     if get_client is None:
         return
     try:
-        get_client().update_current_generation(**kwargs)
+        get_client().update_current_span(**kwargs)
     except Exception as e:
         print(f"[TRACE] update skipped: {e}")
 

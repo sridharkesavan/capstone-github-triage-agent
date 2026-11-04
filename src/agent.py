@@ -94,7 +94,7 @@ class GitHubTriageAgent:
             },
         ]
     
-    @observe(name="classify_issue", as_type="generation", capture_input=False, capture_output=False)
+    @observe(name="classify_issue", as_type="span", capture_input=False, capture_output=False)
     def classify_issue(self, issue: dict) -> dict:
         """
         Classify a single issue using Claude.
@@ -132,10 +132,9 @@ class GitHubTriageAgent:
                 raise ValueError("No text block found in response")
             
             update_generation(
-                model=self.model,
                 input=prompt,
                 output=response_text,
-                metadata={"issue_number": issue["number"], "stop_reason": response.stop_reason},
+                metadata={"model": self.model, "issue_number": issue["number"], "stop_reason": response.stop_reason},
             )
 
             # Try to extract JSON from the response
