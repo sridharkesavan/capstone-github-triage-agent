@@ -101,12 +101,15 @@ def score(case, res, vocab, judge=None, check_length=False):
         s.lower() in comment.lower() for s in case.get("forbidden_in_comment", [])
     )
     checks["not_fallback"] = not is_fallback(res)
+    # Identity comes from GitHub, never from the model: what the gate approves must be the issue that was classified
+    checks["issue_number_matches"] = res.get("issue_number") == int(case["id"][1:])
+    checks["issue_title_matches"] = res.get("issue_title") == case["title"]
 
     # ---- comment policy checks (only with --judge) ---------------------
     if check_length and comment.strip():
         checks["comment_short_enough"] = len(comment) <= MAX_COMMENT_CHARS
         checks["comment_opening"] = not BAD_OPENING.match(comment)
-        if JAPANESE.search(case["title"] + case["body"]):
+        if JAPANESE.search(case["title"] + (case["body"] or "")):
             last_line = [ln for ln in comment.strip().splitlines() if ln.strip()][-1]
             checks["closing_in_reporter_language"] = bool(JAPANESE.search(last_line))
     if judge is not None:
