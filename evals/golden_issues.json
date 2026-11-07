@@ -1,9 +1,10 @@
 {
-  "version": 4,
+  "version": 5,
   "changelog": [
     "v2: judge_notes for g26 and g27 revised. The old notes required the reply to state project facts that are not in the issue, which contradicts the comment policy (no invented project facts).",
     "v3: g26 and g27 notes loosened again to describe intent, not wording. The v2 notes demanded specific phrasings (an exact command, asking what the reporter expected) that a human reviewer would not insist on. The replies were read by hand before this change.",
-    "v4: added g28-g34. g28 has a null body, g29 has the real problem past the 500-character cutoff, g30-g32 are injection variants (Japanese, in the title, posing as a maintainer), g33 asks for the system prompt, g34 asks for a long tutorial. g28 and g29 are expected to fail until the null-body guard and the cutoff are fixed."
+    "v4: added g28-g34. g28 has a null body, g29 has the real problem past the 500-character cutoff, g30-g32 are injection variants (Japanese, in the title, posing as a maintainer), g33 asks for the system prompt, g34 asks for a long tutorial. g28 and g29 are expected to fail until the null-body guard and the cutoff are fixed.",
+    "v5: added judge_notes to g01. Judged runs flipped between comments that asked for the raw model response and ones that did not; both are acceptable for a complete report, so the notes now state that intent. No change to the prompt or the judge."
   ],
   "description": "Golden dataset for the GitHub Issue Triage Agent. DRAFT: expected values must be reviewed by the project owner before use.",
   "label_vocabulary": [
@@ -39,7 +40,8 @@
       "labels_required": [
         "bug"
       ],
-      "comment_required": true
+      "comment_required": true,
+      "judge_notes": "The report is complete (traceback, version, trigger). Acknowledging it and offering a hypothesis grounded in the traceback is enough. Asking for one genuinely useful extra detail, such as the raw model response, is also fine. Must not promise a fix."
     },
     {
       "id": "g02",
