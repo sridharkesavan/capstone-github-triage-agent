@@ -8,6 +8,13 @@ from github import Github
 from github.GithubException import GithubException
 
 
+from src.hitl_gate import Action
+
+
+class UnapprovedActionError(Exception):
+    """Raised when a GitHub write is attempted without an approved Action that covers it."""
+
+
 class GitHubTools:
     """Wrapper around PyGithub for issue triage operations."""
     
@@ -91,7 +98,7 @@ class GitHubTools:
             print(f"[ERROR] Error fetching issue #{issue_number}: {e}")
             return None
     
-    def add_label(self, issue_number: int, labels: list[str]) -> bool:
+    def _add_label(self, issue_number: int, labels: list[str]) -> bool:
         """
         Add labels to an issue (requires approval in Phase 2).
         
@@ -111,7 +118,7 @@ class GitHubTools:
             print(f"[ERROR] Error adding labels: {e}")
             return False
     
-    def add_comment(self, issue_number: int, comment: str) -> bool:
+    def _add_comment(self, issue_number: int, comment: str) -> bool:
         """
         Add a comment to an issue (requires approval in Phase 2).
         
@@ -131,6 +138,30 @@ class GitHubTools:
             print(f"[ERROR] Error adding comment: {e}")
             return False
     
+    @staticmethod
+    def _require_approved(action, needs: str) -> None:
+        """Refuse unless this is an approved Action that covers the write ('labels' or 'comment')."""
+        if not isinstance(action, Action):
+            raise UnapprovedActionError(f"expected an Action, got {type(action).__name__}")
+        if action.approved is not True:
+            raise UnapprovedActionError(
+                f"action {action.id} for issue #{action.issue_number} is not approved"
+            )
+        if needs == "labels" and not (action.action_type in ("add_labels", "both") and action.labels):
+            raise UnapprovedActionError(f"action {action.id} was not approved to add labels")
+        if needs == "comment" and not (action.action_type in ("add_comment", "both") and action.comment):
+            raise UnapprovedActionError(f"action {action.id} was not approved to add a comment")
+
+    def apply_labels(self, action) -> bool:
+        """Add the labels of an approved Action to its issue. Raises UnapprovedActionError otherwise."""
+        self._require_approved(action, "labels")
+        return self._add_label(action.issue_number, action.labels)
+
+    def post_comment(self, action) -> bool:
+        """Post the comment of an approved Action on its issue. Raises UnapprovedActionError otherwise."""
+        self._require_approved(action, "comment")
+        return self._add_comment(action.issue_number, action.comment)
+
     def get_existing_labels(self) -> list[str]:
         """
         Fetch all existing labels in the repository.

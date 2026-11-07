@@ -278,7 +278,7 @@ class GitHubTriageAgent:
             
             # Add labels
             if action.action_type in ['add_labels', 'both']:
-                if self.gh_tools.add_label(action.issue_number, action.labels):
+                if self.gh_tools.apply_labels(action):
                     print(f"  [OK] Added labels: {', '.join(action.labels)}")
                 else:
                     print(f"  [ERROR] Failed to add labels")
@@ -286,7 +286,7 @@ class GitHubTriageAgent:
             # Add comment
             if action.action_type in ['add_comment', 'both']:
                 if action.comment:
-                    if self.gh_tools.add_comment(action.issue_number, action.comment):
+                    if self.gh_tools.post_comment(action):
                         print(f"  [OK] Added comment ({len(action.comment)} chars)")
                     else:
                         print(f"  [ERROR] Failed to add comment")

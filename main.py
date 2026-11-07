@@ -324,12 +324,12 @@ def execute():
             
             # Add labels
             if action.action_type in ['add_labels', 'both']:
-                if agent.gh_tools.add_label(issue_num, action.labels):
+                if agent.gh_tools.apply_labels(action):
                     actions_taken.append('add_labels')
             
             # Add comment
             if action.action_type in ['add_comment', 'both']:
-                if action.comment and agent.gh_tools.add_comment(issue_num, action.comment):
+                if action.comment and agent.gh_tools.post_comment(action):
                     actions_taken.append('add_comment')
             
             executed.append({
