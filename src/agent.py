@@ -105,12 +105,12 @@ class GitHubTriageAgent:
         Returns:
             Classification result with labels and suggested response
         """
-        prompt = CLASSIFICATION_PROMPT.format(
-            title=issue['title'],
-            body=issue['body'][:500]  # Limit body to first 500 chars for context
-        )
         
         try:
+            prompt = CLASSIFICATION_PROMPT.format(
+                title=issue['title'],
+                body=(issue.get('body') or '')[:2000]  # Limit body to first 2000 chars for context
+            )
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=8000,
