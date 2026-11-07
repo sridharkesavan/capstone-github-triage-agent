@@ -21,10 +21,10 @@ The approval gate is enforced in code, not in the prompt. Each proposed action h
 | 1 | Local classifier (read-only) | Done |
 | 2 | Human-in-the-loop approval gate (CLI) | Done |
 | 3 | REST API, Docker, Cloud Run (private) | Done, verified end to end |
-| 4 | Evals and guardrails | Next |
+| 4 | Evals, guardrails and tracing | Done, with open items: golden dataset, eval runner and judge, label guardrail and optional Langfuse tracing are deployed; the approved-action write guard and judge tracing are not written (see `Phase4.md` section 10) |
 | 5 | Enterprise deployment simulation | Optional, later |
 
-Details for each phase: `Phase1.md`, `Phase2.md`, `Phase3.md`. Working notes: `NOTES.md`.
+Details for each phase: `Phase1.md`, `Phase2.md`, `Phase3.md`, `Phase4.md`. Working notes: `NOTES.md`.
 
 ## Quick start
 
@@ -83,11 +83,14 @@ Request and response details, deployment steps, and the bug story are in `Phase3
 src/agent.py            classification and orchestration
 src/tools.py            GitHub API wrapper (the only code that writes)
 src/hitl_gate.py        approval gate
+src/guardrails.py       label vocabulary enforcement
+src/tracing.py          optional Langfuse tracing
 config/prompts.py       system prompt and output format
 main.py                 Flask API
 Dockerfile              container for Cloud Run
-tests/                  approval-gate invariant tests
-Phase1.md .. Phase3.md  per-phase documentation
+tests/                  approval-gate and guardrail tests
+evals/                  golden dataset, eval runner, LLM judge
+Phase1.md .. Phase4.md  per-phase documentation
 ```
 
 `app.yaml` and `deploy.sh` are from the first deployment attempt and are superseded by the commands in `Phase3.md`.
