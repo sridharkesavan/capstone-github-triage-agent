@@ -1,7 +1,7 @@
 # Phase 4: Evals, Guardrails and Tracing
 
 GitHub Issue Triage Agent (capstone). Written 2026-11-04, updated 2026-11-07.
-Phases 1 to 3 are in `Phase1.md` to `Phase3.md`. Work still open at the end of this document continues in the next work session, starting from `capstone-session2-handoff.md`.
+Phases 1 to 3 are in `Phase1.md` to `Phase3.md`. There is no separate handoff file: this document is the record of Phase 4, and the work still open is listed in section 10.
 
 ## Start here
 
@@ -10,6 +10,7 @@ Phases 1 to 3 are in `Phase1.md` to `Phase3.md`. Work still open at the end of t
 **Status (2026-11-07).** Deployed and working as revision `github-triage-agent-00012-bzd`. The live `/triage` smoke test returned 5 of 5 proposals. The evals pass 99/99 over 33 cases x 3 runs (g18 is a known limitation, 0/3), and the judged run was 32/33 before one test note was loosened (section 5, finding B). Open: the deterministic guardrails and tracing of the judge. Section 10 has the full list.
 
 **Reading order.**
+- New to the project: follow **Getting started: step by step** right below this section, then use the numbered sections for detail.
 - To run it: section 0 (setup, environments, safety), then section 7 (commands), then section 13 (troubleshooting).
 - To understand it: section 4 (architecture), section 3 (metrics), section 12 (dataset schema).
 - To review what happened: sections 2, 5 and 6 (results, bugs, learnings).
@@ -23,6 +24,204 @@ python3 evals/run_eval.py --ids g01,g02 --tag healthcheck   # 2/2 pass, about 2 
 PORT=8081 python3 main.py                                   # then call /health and /triage (section 7)
 ```
 
+
+---
+
+## Getting started: step by step
+
+This walkthrough takes you from a fresh clone to your first eval, your first local run and a check of the live service. Do the steps in order and compare each result with the "You should see" line. If a step does not match, stop and use section 13 (troubleshooting) before going on.
+
+### Step 0: what you are looking at
+
+The agent reads open GitHub issues, asks Claude to classify each one, and proposes labels and a comment. Nothing is written to GitHub until a person approves a proposal by its id and then triggers the write.
+
+| Path | What it does |
+|---|---|
+| `src/agent.py` | Classification and orchestration. `classify_issue` is the heart of it |
+| `src/tools.py` | GitHub API wrapper. The only code that writes to GitHub |
+| `src/hitl_gate.py` | The approval gate. Proposals are tracked and approved by id |
+| `src/guardrails.py` | Label vocabulary enforcement |
+| `src/tracing.py` | Optional Langfuse tracing. Never breaks the agent if Langfuse is down |
+| `config/prompts.py` | System prompt: label rules and comment rules |
+| `main.py` | Flask API: `/health`, `/status`, `/triage`, `/approvals`, `/approve`, `/reject`, `/execute` |
+| `evals/` | Golden dataset, eval runner, LLM judge and its calibration set |
+| `tests/` | 12 unit tests. They do not call the model |
+| `Phase1.md` to `Phase4.md` | One document per phase. This file is the newest |
+| `NOTES.md` | Working notes |
+
+### Step 1: get the code and install
+
+```bash
+git clone https://github.com/sridharkesavan/capstone-github-triage-agent.git
+cd capstone-github-triage-agent
+git branch --show-current
+python3 --version
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+pip install pytest
+```
+
+You should see: the branch is `master` (not `main`) and Python is 3.12. The repo is private, so you need access to it first. `google-adk` is in `requirements.txt` but is not used.
+
+### Step 2: create your `.env`
+
+Create a file named `.env` in the repo root. It is gitignored. Never commit it and never paste its contents into a chat or a ticket.
+
+```
+ANTHROPIC_API_KEY=...
+GITHUB_TOKEN=...
+GITHUB_REPO=sridharkesavan/ai-agents-from-scratch
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_HOST=https://jp.cloud.langfuse.com
+```
+
+- `ANTHROPIC_API_KEY` is needed for the agent and the evals.
+- `GITHUB_TOKEN` (personal access token, `repo` scope) is needed for `/triage` and `/execute`, not for the evals.
+- `GITHUB_REPO` is the repo whose **issues** get triaged. It is not the code repo. Pointing it at the code repo gives "No issues to triage".
+- The Langfuse lines are optional. Without valid keys the agent still works and tracing is skipped. Real keys start with `pk-lf-` and `sk-lf-`. The project is in the Japan region, so keys from another region return 401.
+
+### Step 3: run the unit tests
+
+```bash
+python3 -m pytest tests -q
+```
+
+You should see: `12 passed`. These tests do not call the model, so they cost nothing.
+
+### Step 4: run two eval cases
+
+```bash
+python3 evals/run_eval.py --ids g01,g02 --tag healthcheck
+```
+
+You should see: `g01 PASS 1/1` and `g02 PASS 1/1`, a summary with `Fallback answers : 0 of 2`, and a line `Saved: evals/results/run_<timestamp>_healthcheck.json`. This makes 2 model calls and costs about two cents. It does not touch GitHub.
+
+### Step 5: read one real reply
+
+A score is not enough. Print what the agent actually said for g01 and g02:
+
+```bash
+python3 - <<'PY'
+import json, glob
+path = sorted(glob.glob("evals/results/*healthcheck.json"))[-1]
+for r in json.load(open(path))["runs"]:
+    res = r["result"]
+    print(r["id"], "|", res["classification"], "|", res["suggested_labels"])
+    print(res["response_comment"])
+    print("-" * 60)
+PY
+```
+
+You should see a classification, labels from the 7-label vocabulary (`bug`, `enhancement`, `question`, `documentation`, `duplicate`, `needs-triage`, `needs-more-info`) and a short comment that ends with "A maintainer will review this." Get into the habit of reading replies. In this phase a passing case hid a wrong comment (finding A), and a failing case turned out to be a bad test note (finding B).
+
+### Step 6: run the API locally
+
+```bash
+PORT=8081 python3 main.py > /tmp/triage_local.log 2>&1 &
+SERVER_PID=$!
+sleep 6
+curl -s http://localhost:8081/health
+```
+
+You should see: `{"agent_initialized":true,"executions":0,"pending_approvals":0,"status":"healthy"}`. Port 8081 leaves 9090 free for the Cloud Run proxy (step 11). Stop the server with `kill $SERVER_PID` when you are done.
+
+### Step 7: make the agent triage one issue
+
+```bash
+curl -s -X POST http://localhost:8081/triage -H "Content-Type: application/json" \
+  -d '{"repo": "sridharkesavan/ai-agents-from-scratch", "limit": 1}'
+```
+
+You should see JSON with `issues_found: 1`, `proposed: 1`, `warning: null` and an `approvals` object keyed by an 8-character action id. `/triage` only creates in-memory proposals. Every run clears the earlier proposals, and the ids change each time. If `issues_found` is greater than 0 and `proposed` is 0, the response carries a `warning`: look for `[SKIP]` lines in `/tmp/triage_local.log`.
+
+### Step 8: understand the approval flow (read first, do not run casually)
+
+```
+POST /triage                    creates proposals (in memory only)
+GET  /approvals                 lists them with their ids
+POST /approve {"action_id": ""} marks one approved
+POST /reject  {"action_id": ""} marks one rejected
+POST /execute                   writes the approved ones to GitHub
+```
+
+Put a real action id between the quotes. **`/execute` writes real labels and comments to the real repo in `GITHUB_REPO`.** Test issues #1 to #5 in `ai-agents-from-scratch` are real issues, so executing posts real comments there. Only approved ids can reach the write calls, and each approval executes once. That rule is enforced in code, not in the prompt, and `tests/test_gate_invariant.py` checks it.
+
+### Step 9: run the full evals and read the output
+
+```bash
+python3 evals/run_eval.py
+python3 evals/run_eval.py --judge
+python3 evals/run_eval.py --repeat 3 --tag stability
+```
+
+- **Cost:** one classification is about $0.010 to $0.012. A full 34-case run is roughly $0.35 to $0.40 and `--repeat 3` roughly $1.10. The judge adds a call per comment and its cost has not been measured.
+- **How to read it:** `CASE RESULTS` lists PASS, FAIL or FLAKY per case. `SUMMARY` gives the headline pass rate, the fallback count and a per-check table. FLAKY means the case passed some runs and failed others.
+- **g18 fails every time on purpose.** It is a known limitation (an implicit duplicate the classifier cannot see, because it looks at one issue at a time) and is reported apart from the headline.
+- **Reference numbers at the end of Phase 4:** 99/99 on the deterministic checks over 33 cases x 3 runs, none flaky; the judged run was 32/33 before g01's test note was loosened.
+- Calibrate the judge itself with `python3 evals/judge.py --calibrate`. It should agree on 23 of 23 hand-written replies.
+
+### Step 10: change something safely
+
+Follow this routine for any change to the prompt, the parser, a guardrail or the dataset:
+
+1. Run the evals **before** the change and keep the results file.
+2. Change **one** thing. Keep the judge fixed while you change the prompt.
+3. Run the evals again and compare. Read the replies that changed, not only the score.
+4. If you edit the golden dataset, bump `version` and add a line to `changelog` saying what changed and why. Section 12 shows how to add a case.
+5. Edit files with a guarded patch script (section 7, "Safe patch pattern"). It stops if an anchor is missing or appears twice.
+6. Commit the code change and the dataset change that motivated it together, and check `git diff` first. Rewriting the JSON dataset can reformat hundreds of lines.
+
+Facts GitHub already knows (issue number, title) come from code after parsing, never from the model. Keep it that way.
+
+### Step 11: deploy and check the live service
+
+```bash
+git status --short
+git push origin master && git log -1 --oneline origin/master
+gcloud run deploy github-triage-agent --source . --region us-central1 \
+  --project github-triage-agent-513401 --no-allow-unauthenticated --max-instances 1
+```
+
+The Langfuse secrets and host persist from the earlier deploy. The full command with secrets is in section 7. You need `gcloud` signed in with access to the project. The service is private, so reach it through a proxy. In a **second terminal tab** (it must keep running):
+
+```bash
+gcloud run services proxy github-triage-agent --region us-central1 --project github-triage-agent-513401 --port 9090
+```
+
+Back in the first tab:
+
+```bash
+curl -s http://localhost:9090/health
+curl -s -X POST http://localhost:9090/triage -H "Content-Type: application/json" \
+  -d '{"repo": "sridharkesavan/ai-agents-from-scratch", "limit": 5}'
+gcloud run services describe github-triage-agent --region us-central1 --project github-triage-agent-513401 \
+  --format="value(status.latestReadyRevisionName)"
+```
+
+A pass means: `proposed` equals `issues_found`, the issue numbers match the issues, labels are in the vocabulary and comments are under 800 characters. Smoke-test the **live** service after every deploy. In this phase, 26 passing evals sat next to a live service that proposed nothing (bug 5), and one `curl` found it.
+
+To confirm the revision really contains your change, compare the revision's creation time (UTC) with the time of your last code commit (`git log -1 --date=iso-strict -- src config main.py Dockerfile requirements.txt`). The revision must be newer.
+
+### Step 12: check the trace in Langfuse
+
+Open `https://jp.cloud.langfuse.com`, go to Tracing and set the time filter to the last hour. Find the `classify_issue` trace whose timestamp matches your call (Cloud Run logs are in UTC, the dashboard follows your browser's timezone). You should see:
+
+- the issue title and body in the input (the body is capped at 2000 characters);
+- the model's raw JSON in the output. Its `issue_number` is `null` or `0`, because the model never sees the number. The code overwrites it, and this is the behavior behind bug 5;
+- one `anthropic.messages.create` child with the tokens and a cost of about $0.01, and no cost on our own span;
+- a nested pair of `classify_issue` spans. That is cosmetic.
+
+An empty dashboard can mean tracing is disabled, because the wrapper hides errors by design. Run `auth_check()` (section 7, "Langfuse checks") before assuming the agent is the problem.
+
+### Step 13: before you call a change done
+
+- `python3 -m pytest tests -q` shows 12 passed.
+- The full eval run shows no new failures, no new flaky cases and 0 fallbacks.
+- You read the replies for every case your change touched.
+- `git status --short` is empty and `git log -1 --oneline origin/master` shows your commit.
+- If code changed, the service is redeployed, the smoke test passed and a fresh trace appeared.
+- This document and `NOTES.md` say what is now true.
 
 ---
 
