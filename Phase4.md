@@ -7,7 +7,7 @@ Phases 1 to 3 are in `Phase1.md` to `Phase3.md`. There is no separate handoff fi
 
 **What this is.** An agent that reads GitHub issues, classifies them with Claude, and proposes labels and a comment. A human approves each proposal. Only then does anything get written to GitHub.
 
-**Status (2026-11-08).** Deployed and working as revision `github-triage-agent-00013-zzr`. The live `/triage` smoke test returned 5 of 5 proposals. The evals pass 99/99 over 33 cases x 3 runs (g18 is a known limitation, 0/3), and the judged run was 32/33 before one test note was loosened (section 5, finding B). The write guard (section 4) is in: `GitHubTools` writes only through approved actions, and 20 tests pass. Open: block proposals made from fallback results, a link check, a promise-phrase flag, a length cap, and tracing of the judge. Section 10 has the full list.
+**Status (2026-11-08).** Deployed and working as revision `github-triage-agent-00013-zzr`. The live `/triage` smoke test returned 5 of 5 proposals. The evals pass 99/99 over 33 cases x 3 runs (g18 is a known limitation, 0/3), and the judged run was 32/33 before one test note was loosened (section 5, finding B). The write guard (section 4) is in: `GitHubTools` writes only through approved actions, and 25 tests pass. Open: block proposals made from fallback results, a link check, a promise-phrase flag, a length cap, and tracing of the judge. Section 10 has the full list.
 
 **Reading order.**
 - New to the project: follow **Getting started: step by step** right below this section, then use the numbered sections for detail.
@@ -19,7 +19,7 @@ Phases 1 to 3 are in `Phase1.md` to `Phase3.md`. There is no separate handoff fi
 **5-minute health check.** Run these from the repo root. If all three behave, your setup works.
 
 ```bash
-python3 -m pytest tests -q                                  # 20 passed (these tests do not call the model)
+python3 -m pytest tests -q                                  # 25 passed (these tests do not call the model)
 python3 evals/run_eval.py --ids g01,g02 --tag healthcheck   # 2/2 pass, about 2 API calls
 PORT=8081 python3 main.py                                   # then call /health and /triage (section 7)
 ```
@@ -45,7 +45,7 @@ The agent reads open GitHub issues, asks Claude to classify each one, and propos
 | `config/prompts.py` | System prompt: label rules and comment rules |
 | `main.py` | Flask API: `/health`, `/status`, `/triage`, `/approvals`, `/approve`, `/reject`, `/execute` |
 | `evals/` | Golden dataset, eval runner, LLM judge and its calibration set |
-| `tests/` | 20 unit tests. They do not call the model |
+| `tests/` | 25 unit tests. They do not call the model |
 | `Phase1.md` to `Phase4.md` | One document per phase. This file is the newest |
 | `NOTES.md` | Working notes |
 
@@ -87,7 +87,7 @@ LANGFUSE_HOST=https://jp.cloud.langfuse.com
 python3 -m pytest tests -q
 ```
 
-You should see: `20 passed`. These tests do not call the model, so they cost nothing.
+You should see: `25 passed`. These tests do not call the model, so they cost nothing.
 
 ### Step 4: run two eval cases
 
@@ -216,7 +216,7 @@ An empty dashboard can mean tracing is disabled, because the wrapper hides error
 
 ### Step 13: before you call a change done
 
-- `python3 -m pytest tests -q` shows 20 passed.
+- `python3 -m pytest tests -q` shows 25 passed.
 - The full eval run shows no new failures, no new flaky cases and 0 fallbacks.
 - You read the replies for every case your change touched.
 - `git status --short` is empty and `git log -1 --oneline origin/master` shows your commit.
@@ -304,6 +304,7 @@ Honest status (2026-11-08): the evals, the judge, tracing, the write guard and t
 | Judged run, 34 cases, one run each | 32/33 (g18 excluded) | g01 failed the judge's `addresses_issue` check |
 | After g01 judge notes (dataset v5) | g01 3/3 judged | The test note was loosened, the agent was not changed; see finding B |
 | After the write guard (2026-11-08) | 20 tests pass (12 old, 8 new). A local approve and execute on one issue behaved as expected | Deployed as revision `00013-zzr`, live smoke test 5/5 |
+| After the CLI execute fix (2026-11-08) | 25 tests pass (5 new; 3 of them failed before the fix) | Command-line path only. Not deployed: the API path was already safe |
 
 The 26/26 score and the broken live service existed at the same time. That is the main lesson of the phase.
 
@@ -376,7 +377,7 @@ Before this change, `GitHubTools.add_label(issue_number, labels)` and `add_comme
 Limits, stated plainly:
 
 - The guard stops accidents, not forgery. `Action.approved` is a plain attribute, so code that sets it to `True` by hand would pass the check. Closing that needs the gate to keep a private registry of approved ids that the tools check.
-- The command-line path (`execute_approved_actions` in `src/agent.py`) reads approvals with `get_approved_actions()`, which does not empty the list, so running it twice would write the same approvals twice. The API path uses `pop_approved()` and is safe. Not changed yet.
+- The command-line path (`execute_approved_actions` in `src/agent.py`) used to read approvals with `get_approved_actions()`, which does not empty the list, so running it twice wrote the same approvals twice. Fixed 2026-11-08: it now saves the approval log and then takes the approvals out of the gate with `pop_approved()`, the same order as `POST /execute`. `tests/test_cli_execute_once.py` (5 tests) covers it. The deployed API never used this path.
 - The guard covers `GitHubTools`. Anyone holding a PyGithub client can still write directly.
 
 
@@ -490,7 +491,7 @@ python3 evals/run_eval.py --ids g19,g23 --repeat 3 --tag stability
 # Calibrate the judge itself
 python3 evals/judge.py --calibrate
 
-# Unit tests (20; they do not call the classifier)
+# Unit tests (25; they do not call the classifier)
 python3 -m pytest tests -q
 ```
 
@@ -645,8 +646,8 @@ git push origin master && git log -1 --oneline origin/master    # branch is mast
 6. Deterministic guardrails still to write: block proposals made from fallback results, a link check on comments, a promise-phrase flag, a length cap. **Done 2026-11-08:** `GitHubTools` write methods refuse unless given an approved action (section 4, write guard).
 7. Trace the judge call and each eval run in Langfuse.
 8. Remove `google-adk==0.1.0` from `requirements.txt` (unused).
-9. Stop tracking `approval_log.json` in git (`git rm --cached approval_log.json` and add it to `.gitignore`). Every local execute dirties the working tree, and `gcloud run deploy --source .` uploads it.
-10. Make the command-line path `execute_approved_actions` use `pop_approved()`, with a test that it cannot write the same approval twice.
+9. **Done 2026-11-08.** `approval_log.json` and `triage_results.json` (runtime outputs) are no longer tracked in git and are listed in `.gitignore`, so local runs no longer dirty the working tree.
+10. **Done 2026-11-08.** The command-line path `execute_approved_actions` saves the approval log and then uses `pop_approved()`, with tests that it cannot write the same approval twice.
 11. Optional later: spam/invalid category, persistent approvals (Firestore), append-only audit log, port to Google ADK with the eval suite as a safety net, then the enterprise simulation.
 
 ### Known limitations
@@ -663,8 +664,6 @@ git push origin master && git log -1 --oneline origin/master    # branch is mast
 - g01's judge note was loosened after the judged run flipped. The agent still varies between a bare acknowledgement and a request for the raw model response.
 - The judge has run once per case on the full set. Only g01 was repeated.
 - The write guard stops accidents, not forgery: `Action.approved` is a plain attribute that code can set by hand.
-- `execute_approved_actions` (command line) uses `get_approved_actions()`, which does not empty the list, so it can write the same approvals twice. The API path is safe.
-- `approval_log.json` is tracked in git, so local runs dirty the working tree and the file is uploaded with `gcloud run deploy --source .`.
 
 ---
 
