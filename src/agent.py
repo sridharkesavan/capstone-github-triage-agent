@@ -137,6 +137,7 @@ class GitHubTriageAgent:
                 metadata={"model": self.model, "issue_number": issue["number"], "stop_reason": response.stop_reason},
             )
 
+            used_fallback = False
             # Try to extract JSON from the response
             try:
                 # Handle case where response is wrapped in markdown code blocks
@@ -150,6 +151,7 @@ class GitHubTriageAgent:
             except (json.JSONDecodeError, IndexError) as e:
                 print(f"⚠ Failed to parse JSON response: {e}")
                 print(f"Raw response: {response_text}")
+                used_fallback = True
                 # Return a fallback classification
                 classification = {
                     "issue_number": issue['number'],
@@ -167,6 +169,8 @@ class GitHubTriageAgent:
                 classification["issue_title"] = issue["title"]
 
             classification = enforce_label_vocabulary(classification)
+            if used_fallback:
+                classification["fallback"] = True
             return classification
         
         except Exception as e:
@@ -178,7 +182,8 @@ class GitHubTriageAgent:
                 "confidence": 0.0,
                 "suggested_labels": ["needs-triage"],
                 "response_comment": None,
-                "reasoning": f"Error: {str(e)}"
+                "reasoning": f"Error: {str(e)}",
+                "fallback": True
             }
     
     def process_issues(self, limit: int = 5, use_demo: bool = False) -> list[dict]:
@@ -228,6 +233,12 @@ class GitHubTriageAgent:
             print("[WARNING] HITL gate not enabled. Skipping approval.")
             return
         
+        # A failed classification (parse or API error) is a canned answer, not a real triage result
+        if classification.get('fallback') is True:
+            print(f"[SKIP] Issue #{classification.get('issue_number')}: classification failed "
+                  f"({classification.get('reasoning')}); not proposing")
+            return
+
         issue_number = classification.get('issue_number')
         if not issue_number:
             print("[SKIP] Cannot propose action: issue number is null")

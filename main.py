@@ -150,13 +150,20 @@ def triage():
 
         if results and not pending_approvals:
             print(f"[WARN] {len(results)} issue(s) classified but 0 proposed")
+        failed = [r for r in results if r.get('fallback') is True]
+        warnings = []
+        if results and not pending_approvals:
+            warnings.append(f"{len(results)} issue(s) classified but none proposed; check logs for [SKIP] lines")
+        if failed:
+            print(f"[WARN] {len(failed)} issue(s) could not be classified (parse or API error) and were not proposed")
+            warnings.append(f"{len(failed)} issue(s) could not be classified (parse or API error) and were not proposed")
         flush()  # send buffered traces before Cloud Run can freeze the instance
         return jsonify({
             "status": "success",
             "issues_found": len(results),
             "proposed": len(pending_approvals),
-            "warning": (f"{len(results)} issue(s) classified but none proposed; check logs for [SKIP] lines"
-                        if results and not pending_approvals else None),
+            "classification_failures": len(failed),
+            "warning": " ".join(warnings) or None,
             "pending_approvals": list(pending_approvals.keys()),
             "approvals": pending_approvals
         }), 200
