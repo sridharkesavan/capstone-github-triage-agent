@@ -20,6 +20,7 @@ from anthropic import Anthropic
 from .tools import GitHubTools
 from .hitl_gate import HITLGate, Action
 from .guardrails import enforce_label_vocabulary
+from .comment_guard import enforce_comment_policy
 from .tracing import observe, update_generation
 import sys
 import os
@@ -171,6 +172,8 @@ class GitHubTriageAgent:
             classification = enforce_label_vocabulary(classification)
             if used_fallback:
                 classification["fallback"] = True
+            else:
+                classification = enforce_comment_policy(classification, issue)
             return classification
         
         except Exception as e:

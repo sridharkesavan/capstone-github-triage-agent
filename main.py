@@ -152,6 +152,11 @@ def triage():
             print(f"[WARN] {len(results)} issue(s) classified but 0 proposed")
         failed = [r for r in results if r.get('fallback') is True]
         warnings = []
+        removed = [r for r in results if r.get('comment_violations')]
+        if removed:
+            print(f"[WARN] {len(removed)} comment(s) removed by the comment guard (link, promise or length)")
+            warnings.append(f"{len(removed)} comment(s) were removed by the comment guard (link, promise or "
+                            f"length); see comment_violations in each result")
         if results and not pending_approvals:
             warnings.append(f"{len(results)} issue(s) classified but none proposed; check logs for [SKIP] lines")
         if failed:
@@ -163,6 +168,7 @@ def triage():
             "issues_found": len(results),
             "proposed": len(pending_approvals),
             "classification_failures": len(failed),
+            "comments_removed": len(removed),
             "warning": " ".join(warnings) or None,
             "pending_approvals": list(pending_approvals.keys()),
             "approvals": pending_approvals
