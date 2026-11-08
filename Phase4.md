@@ -7,7 +7,7 @@ Phases 1 to 3 are in `Phase1.md` to `Phase3.md`. There is no separate handoff fi
 
 **What this is.** An agent that reads GitHub issues, classifies them with Claude, and proposes labels and a comment. A human approves each proposal. Only then does anything get written to GitHub.
 
-**Status (2026-11-08).** Deployed and working as revision `github-triage-agent-00013-zzr`. The live `/triage` smoke test returned 5 of 5 proposals. The evals pass 99/99 over 33 cases x 3 runs (g18 is a known limitation, 0/3), and the judged run was 32/33 before one test note was loosened (section 5, finding B). The write guard (section 4) is in: `GitHubTools` writes only through approved actions, and 25 tests pass. Open: block proposals made from fallback results, a link check, a promise-phrase flag, a length cap, and tracing of the judge. Section 10 has the full list.
+**Status (2026-11-08).** Deployed and working as revision `github-triage-agent-00014-5nw`. The live `/triage` smoke test returned 5 of 5 proposals with `classification_failures: 0`. The evals pass 99/99 over 33 cases x 3 runs (g18 is a known limitation, 0/3), and the judged run was 32/33 before one test note was loosened (section 5, finding B). Two code-level guards are in (section 4): `GitHubTools` writes only through approved actions, and a failed classification is marked and never proposed. 29 tests pass. Open: a link check, a promise-phrase flag, a length cap, and tracing of the judge. Section 10 has the full list.
 
 **Reading order.**
 - New to the project: follow **Getting started: step by step** right below this section, then use the numbered sections for detail.
@@ -19,7 +19,7 @@ Phases 1 to 3 are in `Phase1.md` to `Phase3.md`. There is no separate handoff fi
 **5-minute health check.** Run these from the repo root. If all three behave, your setup works.
 
 ```bash
-python3 -m pytest tests -q                                  # 25 passed (these tests do not call the model)
+python3 -m pytest tests -q                                  # 29 passed (these tests do not call the model)
 python3 evals/run_eval.py --ids g01,g02 --tag healthcheck   # 2/2 pass, about 2 API calls
 PORT=8081 python3 main.py                                   # then call /health and /triage (section 7)
 ```
@@ -45,7 +45,7 @@ The agent reads open GitHub issues, asks Claude to classify each one, and propos
 | `config/prompts.py` | System prompt: label rules and comment rules |
 | `main.py` | Flask API: `/health`, `/status`, `/triage`, `/approvals`, `/approve`, `/reject`, `/execute` |
 | `evals/` | Golden dataset, eval runner, LLM judge and its calibration set |
-| `tests/` | 25 unit tests. They do not call the model |
+| `tests/` | 29 unit tests. They do not call the model |
 | `Phase1.md` to `Phase4.md` | One document per phase. This file is the newest |
 | `NOTES.md` | Working notes |
 
@@ -87,7 +87,7 @@ LANGFUSE_HOST=https://jp.cloud.langfuse.com
 python3 -m pytest tests -q
 ```
 
-You should see: `25 passed`. These tests do not call the model, so they cost nothing.
+You should see: `29 passed`. These tests do not call the model, so they cost nothing.
 
 ### Step 4: run two eval cases
 
@@ -133,7 +133,7 @@ curl -s -X POST http://localhost:8081/triage -H "Content-Type: application/json"
   -d '{"repo": "sridharkesavan/ai-agents-from-scratch", "limit": 1}'
 ```
 
-You should see JSON with `issues_found: 1`, `proposed: 1`, `warning: null` and an `approvals` object keyed by an 8-character action id. `/triage` only creates in-memory proposals. Every run clears the earlier proposals, and the ids change each time. If `issues_found` is greater than 0 and `proposed` is 0, the response carries a `warning`: look for `[SKIP]` lines in `/tmp/triage_local.log`.
+You should see JSON with `issues_found: 1`, `proposed: 1`, `classification_failures: 0`, `warning: null` and an `approvals` object keyed by an 8-character action id. `/triage` only creates in-memory proposals. Every run clears the earlier proposals, and the ids change each time. If `issues_found` is greater than 0 and `proposed` is 0, the response carries a `warning`: look for `[SKIP]` lines in `/tmp/triage_local.log`.
 
 ### Step 8: understand the approval flow (read first, do not run casually)
 
@@ -216,7 +216,7 @@ An empty dashboard can mean tracing is disabled, because the wrapper hides error
 
 ### Step 13: before you call a change done
 
-- `python3 -m pytest tests -q` shows 25 passed.
+- `python3 -m pytest tests -q` shows 29 passed.
 - The full eval run shows no new failures, no new flaky cases and 0 fallbacks.
 - You read the replies for every case your change touched.
 - `git status --short` is empty and `git log -1 --oneline origin/master` shows your commit.
@@ -284,7 +284,7 @@ What was built:
 | Tracing | Langfuse, optional and non-blocking (`src/tracing.py`), deployed to Cloud Run |
 | API safety net | `/triage` warns when issues were classified but nothing was proposed (deployed in revision 00012; not yet seen firing, because every live run proposed all issues) |
 
-Honest status (2026-11-08): the evals, the judge, tracing, the write guard and the fixes in section 5 are done and deployed. The remaining deterministic guardrails (fallback block, link check, promise flag, length cap) and tracing of the judge are not written. Section 10 lists what is still open.
+Honest status (2026-11-08): the evals, the judge, tracing, the write guard, the fallback guard and the fixes in section 5 are done and deployed. The remaining deterministic guardrails (link check, promise flag, length cap) and tracing of the judge are not written. Section 10 lists what is still open.
 
 ---
 
@@ -305,6 +305,7 @@ Honest status (2026-11-08): the evals, the judge, tracing, the write guard and t
 | After g01 judge notes (dataset v5) | g01 3/3 judged | The test note was loosened, the agent was not changed; see finding B |
 | After the write guard (2026-11-08) | 20 tests pass (12 old, 8 new). A local approve and execute on one issue behaved as expected | Deployed as revision `00013-zzr`, live smoke test 5/5 |
 | After the CLI execute fix (2026-11-08) | 25 tests pass (5 new; 3 of them failed before the fix) | Command-line path only. Not deployed: the API path was already safe |
+| After the fallback guard (2026-11-08) | 29 tests pass (4 new; 3 of them failed before the change) | Deployed as revision `00014-5nw`, smoke test 5/5 with `classification_failures: 0` |
 
 The 26/26 score and the broken live service existed at the same time. That is the main lesson of the phase.
 
@@ -379,6 +380,20 @@ Limits, stated plainly:
 - The guard stops accidents, not forgery. `Action.approved` is a plain attribute, so code that sets it to `True` by hand would pass the check. Closing that needs the gate to keep a private registry of approved ids that the tools check.
 - The command-line path (`execute_approved_actions` in `src/agent.py`) used to read approvals with `get_approved_actions()`, which does not empty the list, so running it twice wrote the same approvals twice. Fixed 2026-11-08: it now saves the approval log and then takes the approvals out of the gate with `pop_approved()`, the same order as `POST /execute`. `tests/test_cli_execute_once.py` (5 tests) covers it. The deployed API never used this path.
 - The guard covers `GitHubTools`. Anyone holding a PyGithub client can still write directly.
+
+### The fallback guard (added 2026-11-08)
+
+`classify_issue` returns a canned answer when the API call fails or the reply cannot be parsed: classification `question`, label `needs-triage`, and either a generic "We'll review it soon" comment or none. That answer looked like a normal triage result, so a reviewer could approve it without knowing the model never answered. Now:
+
+- Both canned answers carry `"fallback": True`. The parse-error one is marked after `enforce_label_vocabulary`, so the label guardrail cannot drop the flag.
+- `propose_github_action` refuses a result marked as fallback and prints a `[SKIP]` line with the reason.
+- `/triage` returns `classification_failures` (the number of failed classifications) and adds a warning when there are any, whether or not other proposals went through.
+- The eval's `is_fallback` already checked `res.get("fallback") is True`, so the agent and the evals now share one definition. The older checks on the canned wording stay as a second signal.
+- `tests/test_fallback_guard.py` has 4 tests with a fake Anthropic client and no network: an API error, an unparseable reply, a good reply that must still be proposed, and a marked result that must be refused even with labels and a comment. Three failed before the change, and 29 tests pass after it.
+- Deployed as revision `00014-5nw`. The live smoke test proposed 5 of 5 issues with `classification_failures: 0`.
+
+Limit: only failed classifications are blocked. A reply that parses but is wrong still looks like a normal proposal.
+
 
 
 ---
@@ -491,7 +506,7 @@ python3 evals/run_eval.py --ids g19,g23 --repeat 3 --tag stability
 # Calibrate the judge itself
 python3 evals/judge.py --calibrate
 
-# Unit tests (25; they do not call the classifier)
+# Unit tests (29; they do not call the classifier)
 python3 -m pytest tests -q
 ```
 
@@ -627,11 +642,12 @@ git push origin master && git log -1 --oneline origin/master    # branch is mast
 | Item | State |
 |---|---|
 | Issue-number fix | Done, pushed, deployed, live smoke test passed (5/5) |
-| Langfuse tracing | Done locally and deployed (now revision `github-triage-agent-00013-zzr`). A second Cloud Run `/triage` call produced a fresh trace |
+| Langfuse tracing | Done locally and deployed (now revision `github-triage-agent-00014-5nw`). A second Cloud Run `/triage` call produced a fresh trace |
 | Identity checks in `run_eval.py` | Shown to fail on issue number 0, None, 2 and "1" (a string) and on a wrong title, each failing only its own check (2026-11-07) |
 | Dataset v5 (34 cases) | Committed and pushed (`89b58ae`). g28 to g34 pass; g01 got `judge_notes` in v5 |
 | `/triage` zero-proposal warning | In `main.py`, committed (`4ab14fb`), deployed in revision 00012. Not yet seen firing: every live run proposed all issues |
 | Write guard | In `src/tools.py` (commit `d565f0b`), deployed in revision 00013. 20 tests pass. A local approve and execute was checked by hand |
+| Fallback guard | In `src/agent.py` and `main.py`, deployed in revision 00014. 29 tests pass |
 | Uncommitted | Nothing. Code, data and this write-up are committed and pushed |
 
 ---
@@ -643,7 +659,7 @@ git push origin master && git log -1 --oneline origin/master    # branch is mast
 3. **Partly done.** `--repeat 3` on 34 cases without `--judge`: 99/99, none flaky. `--judge` once on 34: 32/33, then the g01 note. Not yet run: `--judge --repeat 3` on the full set.
 4. Remove `issue_number` and `issue_title` from the prompt's JSON schema (the model cannot know them). Separate change, run the eval before and after.
 5. Add a golden case with a complete bug report that must **not** get `needs-more-info`. Every live test issue got that label. The test issues really are thin (14 to 140 characters), so it was correct, but over-triggering is untested.
-6. Deterministic guardrails still to write: block proposals made from fallback results, a link check on comments, a promise-phrase flag, a length cap. **Done 2026-11-08:** `GitHubTools` write methods refuse unless given an approved action (section 4, write guard).
+6. Deterministic guardrails still to write: a link check on comments, a promise-phrase flag, a length cap. **Done 2026-11-08:** `GitHubTools` write methods refuse unless given an approved action, and failed classifications are marked and never proposed (section 4, write guard and fallback guard).
 7. Trace the judge call and each eval run in Langfuse.
 8. Remove `google-adk==0.1.0` from `requirements.txt` (unused).
 9. **Done 2026-11-08.** `approval_log.json` and `triage_results.json` (runtime outputs) are no longer tracked in git and are listed in `.gitignore`, so local runs no longer dirty the working tree.
@@ -654,7 +670,7 @@ git push origin master && git log -1 --oneline origin/master    # branch is mast
 
 - Pending approvals live in memory and reset when the instance scales to zero, so Cloud Run runs one instance with one gunicorn worker.
 - `approval_log.json` is overwritten on each execute.
-- A failed classification still looks like a normal proposal until a guardrail blocks it.
+- A failed classification (parse or API error) is marked and never proposed. A reply that parses but is wrong still looks like a normal proposal.
 - Spam has no category. Test issues #4 and #5 got labels but no comment.
 - Issues #1 and #2 have identical bodies, so they are poor fixtures for comment quality.
 - Implicit duplicates (g18) are out of reach because the classifier sees one issue at a time.
