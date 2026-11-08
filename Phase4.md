@@ -7,7 +7,7 @@ Phases 1 to 3 are in `Phase1.md` to `Phase3.md`. There is no separate handoff fi
 
 **What this is.** An agent that reads GitHub issues, classifies them with Claude, and proposes labels and a comment. A human approves each proposal. Only then does anything get written to GitHub.
 
-**Status (2026-11-08).** Deployed and working as revision `github-triage-agent-00014-5nw`. The live `/triage` smoke test returned 5 of 5 proposals with `classification_failures: 0`. The evals pass 99/99 over 33 cases x 3 runs (g18 is a known limitation, 0/3), and the judged run was 32/33 before one test note was loosened (section 5, finding B). Two code-level guards are in (section 4): `GitHubTools` writes only through approved actions, and a failed classification is marked and never proposed. 29 tests pass. Open: a link check, a promise-phrase flag, a length cap, and tracing of the judge. Section 10 has the full list.
+**Status (2026-11-08).** Deployed and working as revision `github-triage-agent-00015-t48`. The live `/triage` smoke test returned 5 of 5 proposals with `classification_failures: 0` and `comments_removed: 0`. The evals pass 99/99 over 33 cases x 3 runs (g18 is a known limitation, 0/3), and the judged run was 32/33 before one test note was loosened (section 5, finding B). Three code-level guards are in (section 4): `GitHubTools` writes only through approved actions, a failed classification is marked and never proposed, and a comment with a foreign link, a promise or over 800 characters is removed. 59 tests pass. Open: tracing of the judge and the eval runs, and the housekeeping items. Section 10 has the full list.
 
 **Reading order.**
 - New to the project: follow **Getting started: step by step** right below this section, then use the numbered sections for detail.
@@ -19,7 +19,7 @@ Phases 1 to 3 are in `Phase1.md` to `Phase3.md`. There is no separate handoff fi
 **5-minute health check.** Run these from the repo root. If all three behave, your setup works.
 
 ```bash
-python3 -m pytest tests -q                                  # 29 passed (these tests do not call the model)
+python3 -m pytest tests -q                                  # 59 passed (these tests do not call the model)
 python3 evals/run_eval.py --ids g01,g02 --tag healthcheck   # 2/2 pass, about 2 API calls
 PORT=8081 python3 main.py                                   # then call /health and /triage (section 7)
 ```
@@ -45,7 +45,7 @@ The agent reads open GitHub issues, asks Claude to classify each one, and propos
 | `config/prompts.py` | System prompt: label rules and comment rules |
 | `main.py` | Flask API: `/health`, `/status`, `/triage`, `/approvals`, `/approve`, `/reject`, `/execute` |
 | `evals/` | Golden dataset, eval runner, LLM judge and its calibration set |
-| `tests/` | 29 unit tests. They do not call the model |
+| `tests/` | 59 unit tests. They do not call the model |
 | `Phase1.md` to `Phase4.md` | One document per phase. This file is the newest |
 | `NOTES.md` | Working notes |
 
@@ -87,7 +87,7 @@ LANGFUSE_HOST=https://jp.cloud.langfuse.com
 python3 -m pytest tests -q
 ```
 
-You should see: `29 passed`. These tests do not call the model, so they cost nothing.
+You should see: `59 passed`. These tests do not call the model, so they cost nothing.
 
 ### Step 4: run two eval cases
 
@@ -133,7 +133,7 @@ curl -s -X POST http://localhost:8081/triage -H "Content-Type: application/json"
   -d '{"repo": "sridharkesavan/ai-agents-from-scratch", "limit": 1}'
 ```
 
-You should see JSON with `issues_found: 1`, `proposed: 1`, `classification_failures: 0`, `warning: null` and an `approvals` object keyed by an 8-character action id. `/triage` only creates in-memory proposals. Every run clears the earlier proposals, and the ids change each time. If `issues_found` is greater than 0 and `proposed` is 0, the response carries a `warning`: look for `[SKIP]` lines in `/tmp/triage_local.log`.
+You should see JSON with `issues_found: 1`, `proposed: 1`, `classification_failures: 0`, `comments_removed: 0`, `warning: null` and an `approvals` object keyed by an 8-character action id. `/triage` only creates in-memory proposals. Every run clears the earlier proposals, and the ids change each time. If `issues_found` is greater than 0 and `proposed` is 0, the response carries a `warning`: look for `[SKIP]` lines in `/tmp/triage_local.log`.
 
 ### Step 8: understand the approval flow (read first, do not run casually)
 
@@ -216,7 +216,7 @@ An empty dashboard can mean tracing is disabled, because the wrapper hides error
 
 ### Step 13: before you call a change done
 
-- `python3 -m pytest tests -q` shows 29 passed.
+- `python3 -m pytest tests -q` shows 59 passed.
 - The full eval run shows no new failures, no new flaky cases and 0 fallbacks.
 - You read the replies for every case your change touched.
 - `git status --short` is empty and `git log -1 --oneline origin/master` shows your commit.
@@ -284,7 +284,7 @@ What was built:
 | Tracing | Langfuse, optional and non-blocking (`src/tracing.py`), deployed to Cloud Run |
 | API safety net | `/triage` warns when issues were classified but nothing was proposed (deployed in revision 00012; not yet seen firing, because every live run proposed all issues) |
 
-Honest status (2026-11-08): the evals, the judge, tracing, the write guard, the fallback guard and the fixes in section 5 are done and deployed. The remaining deterministic guardrails (link check, promise flag, length cap) and tracing of the judge are not written. Section 10 lists what is still open.
+Honest status (2026-11-08): the evals, the judge, tracing, the three code-level guards and the fixes in section 5 are done and deployed. Not written: tracing of the judge call and the eval runs. The comment guard has not yet fired on a real model reply. Section 10 lists what is still open.
 
 ---
 
@@ -306,6 +306,7 @@ Honest status (2026-11-08): the evals, the judge, tracing, the write guard, the 
 | After the write guard (2026-11-08) | 20 tests pass (12 old, 8 new). A local approve and execute on one issue behaved as expected | Deployed as revision `00013-zzr`, live smoke test 5/5 |
 | After the CLI execute fix (2026-11-08) | 25 tests pass (5 new; 3 of them failed before the fix) | Command-line path only. Not deployed: the API path was already safe |
 | After the fallback guard (2026-11-08) | 29 tests pass (4 new; 3 of them failed before the change) | Deployed as revision `00014-5nw`, smoke test 5/5 with `classification_failures: 0` |
+| After the comment guard (2026-11-08) | 59 tests pass (30 new; 3 of the 5 integration tests failed before the guard was wired in). Full eval run: 33/33, g18 known limitation, 0 comments removed from the real model's replies | Deployed as revision `00015-t48`, smoke test 5/5 with `classification_failures: 0` and `comments_removed: 0` |
 
 The 26/26 score and the broken live service existed at the same time. That is the main lesson of the phase.
 
@@ -393,6 +394,35 @@ Limits, stated plainly:
 - Deployed as revision `00014-5nw`. The live smoke test proposed 5 of 5 issues with `classification_failures: 0`.
 
 Limit: only failed classifications are blocked. A reply that parses but is wrong still looks like a normal proposal.
+
+### The comment guard (added 2026-11-08)
+
+The comment policy (section 4 above) asks the model for a short comment with no links it was not given and no promises. The prompt and the LLM judge check that, but nothing in code enforced it. `src/comment_guard.py` now does, on every classification that is not a fallback:
+
+- **`too_long`:** the comment is over 800 characters.
+- **`link`:** the comment contains a URL that does not appear in the issue's own title or body. A URL the reporter wrote is allowed.
+- **`promise`:** the comment matches a promise pattern: a promise to fix, add, implement, release, reopen, close, merge or document, "will be fixed", "we are working on", "we promise", a timeline ("within 2 days", "by tomorrow", "next release", "ETA"), and the Japanese equivalents (for example 修正します). "A maintainer will review this." and "担当者が確認します。" pass.
+
+When a comment has any violation, it is removed: `response_comment` becomes `None`, the original text is kept in `removed_comment`, and the reasons are in `comment_violations`. The labels are left alone, because they are checked separately, so a bad sentence does not cost a good label. `/triage` returns `comments_removed` and adds a warning when it is not zero.
+
+Two design decisions:
+
+- **Remove, not truncate.** The policy requires a closing line, and cutting a long comment at 800 characters would remove exactly that.
+- **Links are allowed only when the issue contains them.** The policy forbids project facts the issue does not state, and a link is the easiest way to smuggle one in.
+
+Evidence:
+
+- `tests/test_comment_guard.py` has 30 tests: 25 unit tests on the text rules and 5 integration tests that run `classify_issue` with a fake Anthropic client (no network). Before the guard was wired in, 3 of the 5 integration tests failed; 59 tests pass in total.
+- A scan of 345 saved eval comments flagged 78. All 78 came from runs before 7 November: 75 for length only, and 3 promise matches that are real policy breaks ("within 14 days" once, "we'll reopen" twice). The 176 comments from 7 November onward had 0 flags.
+- A full eval run with the guard wired in: 33/33, g18 as the known limitation, `comment_present` 31/31, 0 comments removed.
+- Deployed as revision `00015-t48`. The live smoke test proposed 5 of 5 issues with `comments_removed: 0`.
+
+Limits:
+
+- The promise check is a list of patterns, not understanding. It can miss a promise worded in an unusual way and can flag an unusual harmless sentence. URLs written without a scheme (for example `example.com/page`) are not detected.
+- It checks the comment text, not whether the facts in it are right. The judge covers that.
+- It has only been exercised by fake replies, saved comments and one full eval run. It has not fired on a real model reply yet, so a non-zero `comments_removed` in production is the signal to read `removed_comment` and decide whether the model slipped or a pattern is too eager.
+
 
 
 
@@ -506,7 +536,7 @@ python3 evals/run_eval.py --ids g19,g23 --repeat 3 --tag stability
 # Calibrate the judge itself
 python3 evals/judge.py --calibrate
 
-# Unit tests (29; they do not call the classifier)
+# Unit tests (59; they do not call the classifier)
 python3 -m pytest tests -q
 ```
 
@@ -642,12 +672,13 @@ git push origin master && git log -1 --oneline origin/master    # branch is mast
 | Item | State |
 |---|---|
 | Issue-number fix | Done, pushed, deployed, live smoke test passed (5/5) |
-| Langfuse tracing | Done locally and deployed (now revision `github-triage-agent-00014-5nw`). A second Cloud Run `/triage` call produced a fresh trace |
+| Langfuse tracing | Done locally and deployed (now revision `github-triage-agent-00015-t48`). A second Cloud Run `/triage` call produced a fresh trace |
 | Identity checks in `run_eval.py` | Shown to fail on issue number 0, None, 2 and "1" (a string) and on a wrong title, each failing only its own check (2026-11-07) |
 | Dataset v5 (34 cases) | Committed and pushed (`89b58ae`). g28 to g34 pass; g01 got `judge_notes` in v5 |
 | `/triage` zero-proposal warning | In `main.py`, committed (`4ab14fb`), deployed in revision 00012. Not yet seen firing: every live run proposed all issues |
 | Write guard | In `src/tools.py` (commit `d565f0b`), deployed in revision 00013. 20 tests pass. A local approve and execute was checked by hand |
 | Fallback guard | In `src/agent.py` and `main.py`, deployed in revision 00014. 29 tests pass |
+| Comment guard | In `src/comment_guard.py`, wired into `classify_issue`, deployed in revision 00015. 59 tests pass |
 | Uncommitted | Nothing. Code, data and this write-up are committed and pushed |
 
 ---
@@ -659,7 +690,7 @@ git push origin master && git log -1 --oneline origin/master    # branch is mast
 3. **Partly done.** `--repeat 3` on 34 cases without `--judge`: 99/99, none flaky. `--judge` once on 34: 32/33, then the g01 note. Not yet run: `--judge --repeat 3` on the full set.
 4. Remove `issue_number` and `issue_title` from the prompt's JSON schema (the model cannot know them). Separate change, run the eval before and after.
 5. Add a golden case with a complete bug report that must **not** get `needs-more-info`. Every live test issue got that label. The test issues really are thin (14 to 140 characters), so it was correct, but over-triggering is untested.
-6. Deterministic guardrails still to write: a link check on comments, a promise-phrase flag, a length cap. **Done 2026-11-08:** `GitHubTools` write methods refuse unless given an approved action, and failed classifications are marked and never proposed (section 4, write guard and fallback guard).
+6. **Done 2026-11-08.** Deterministic guardrails: `GitHubTools` write methods refuse unless given an approved action, failed classifications are marked and never proposed, and comments with a foreign link, a promise or over 800 characters are removed (section 4).
 7. Trace the judge call and each eval run in Langfuse.
 8. Remove `google-adk==0.1.0` from `requirements.txt` (unused).
 9. **Done 2026-11-08.** `approval_log.json` and `triage_results.json` (runtime outputs) are no longer tracked in git and are listed in `.gitignore`, so local runs no longer dirty the working tree.
@@ -671,6 +702,7 @@ git push origin master && git log -1 --oneline origin/master    # branch is mast
 - Pending approvals live in memory and reset when the instance scales to zero, so Cloud Run runs one instance with one gunicorn worker.
 - `approval_log.json` is overwritten on each execute.
 - A failed classification (parse or API error) is marked and never proposed. A reply that parses but is wrong still looks like a normal proposal.
+- The comment guard is a set of patterns: it can miss unusual promise wording, does not detect URLs written without a scheme, and checks the comment text, not whether its facts are right. It has not yet fired on a real model reply.
 - Spam has no category. Test issues #4 and #5 got labels but no comment.
 - Issues #1 and #2 have identical bodies, so they are poor fixtures for comment quality.
 - Implicit duplicates (g18) are out of reach because the classifier sees one issue at a time.
