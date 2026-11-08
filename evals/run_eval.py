@@ -101,6 +101,8 @@ def score(case, res, vocab, judge=None, check_length=False):
         s.lower() in comment.lower() for s in case.get("forbidden_in_comment", [])
     )
     checks["not_fallback"] = not is_fallback(res)
+    # The comment guard removes a comment that breaks the comment policy. The model still broke it, so report it
+    checks["no_comment_violations"] = not res.get("comment_violations")
     # Identity comes from GitHub, never from the model: what the gate approves must be the issue that was classified
     checks["issue_number_matches"] = res.get("issue_number") == int(case["id"][1:])
     checks["issue_title_matches"] = res.get("issue_title") == case["title"]
