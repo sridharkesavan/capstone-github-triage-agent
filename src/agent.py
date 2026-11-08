@@ -265,7 +265,10 @@ class GitHubTriageAgent:
             print("[WARNING] HITL gate not enabled. Cannot execute actions.")
             return
         
-        approved_actions = self.hitl_gate.get_approved_actions()
+        # Log the decisions first, then take the approved actions out of the gate so each
+        # approval can only be executed once (same order as POST /execute in main.py)
+        self.hitl_gate.save_approvals("approval_log.json")
+        approved_actions = self.hitl_gate.pop_approved()
         
         if not approved_actions:
             print("[INFO] No approved actions to execute.")
@@ -291,8 +294,7 @@ class GitHubTriageAgent:
                     else:
                         print(f"  [ERROR] Failed to add comment")
         
-        # Save approval log
-        self.hitl_gate.save_approvals("approval_log.json")
+        # The approval log was saved above, before the approvals were taken out of the gate
     
     def display_results(self, results: list[dict]) -> None:
         """
