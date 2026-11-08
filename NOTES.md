@@ -12,8 +12,9 @@ Keep this file short. The detail lives in `Phase4.md` (start with "Getting start
 - Command-line execute path fixed (2026-11-08): `execute_approved_actions` saves the approval log and then uses `pop_approved()`, so each approval is written once. `approval_log.json` and `triage_results.json` are no longer tracked in git.
 - Fallback guard (2026-11-08): a failed classification (parse or API error) is marked `fallback: true`, never proposed, and counted in `classification_failures` in the `/triage` response.
 - Comment guard (2026-11-08): `src/comment_guard.py` removes a comment (the labels are kept) if it has a link that is not in the issue, a promise (fix, release, reopen, close, docs, timeline) or is over 800 characters. The result records `comment_violations` and `removed_comment`, and `/triage` returns `comments_removed`.
+- Dataset v6 (2026-11-08): g35 (a reporter demands a release date) and g36 (the issue contains a link) exercise the comment guard. Both passed 3 of 3 judged runs with no violations. The eval runner reports `no_comment_violations`.
 - Write guard (2026-11-08): `GitHubTools` writes only through `apply_labels(action)` and `post_comment(action)`, which raise `UnapprovedActionError` unless given an approved `Action` that covers the write. 59 tests pass (`tests/test_write_guard.py` has 8, `tests/test_cli_execute_once.py` has 5, `tests/test_fallback_guard.py` has 4, `tests/test_comment_guard.py` has 30). Checked by hand with a local approve and execute.
-- Evals: dataset v5, 34 cases. Deterministic checks 99/99 over 33 cases x 3 runs (g18 is a known limitation, 0/3), no flaky cases, 0 fallbacks.
+- Evals: dataset v6, 36 cases. On the 34-case dataset, deterministic checks passed 99/99 over 33 cases x 3 runs (g18 is a known limitation, 0/3), with no flaky cases and 0 fallbacks. Full run on v6: 35/35 (known limitation excluded: g18), 0 comments removed by the guard, 0 fallbacks.
 - Judged run: 32/33 before g01's test note was loosened (see decisions).
 - Model: `claude-opus-5-5` through the Anthropic SDK. Google ADK is not used.
 - Branch is `master`, not `main`.
@@ -21,14 +22,13 @@ Keep this file short. The detail lives in `Phase4.md` (start with "Getting start
 ## Open work, in order
 
 1. Trace the judge call and each eval run in Langfuse, tagged by case id.
-2. Add golden cases that exercise the comment guard against the real model (an issue that asks when it will be fixed, and an issue that contains a URL), because the guard has not fired on a real reply yet.
-3. Run `--judge --repeat 3` on the full set (the judge has run once per case, and only g01 was repeated).
-4. Remove `issue_number` and `issue_title` from the JSON schema in `config/prompts.py`, because the model cannot know them. Separate change, run the evals before and after.
-5. Add a golden case with a complete bug report that must not get `needs-more-info`, to test over-triggering.
-6. Add a "[body truncated]" marker when a body is cut at 2000 characters, so a comment never blames the reporter for our cut.
-7. Remove `google-adk==0.1.0` from `requirements.txt` (unused).
-8. Check files of unknown value before relying on them: `src/agent_without_hitl.py`, `check_models.py`, `test_api.py`. `app.yaml` and `deploy.sh` are superseded.
-9. Later, optional: close the forgery gap in the write guard (the gate keeps a private registry of approved ids that the tools check), spam/invalid category, persistent approvals (Firestore), append-only audit log, port to Google ADK with the eval suite as a safety net, Phase 5 enterprise simulation.
+2. Run `--judge --repeat 3` on the full set (the judge has run once per case, and only g01 was repeated).
+3. Remove `issue_number` and `issue_title` from the JSON schema in `config/prompts.py`, because the model cannot know them. Separate change, run the evals before and after.
+4. Add a golden case with a complete bug report that must not get `needs-more-info`, to test over-triggering.
+5. Add a "[body truncated]" marker when a body is cut at 2000 characters, so a comment never blames the reporter for our cut.
+6. Remove `google-adk==0.1.0` from `requirements.txt` (unused).
+7. Check files of unknown value before relying on them: `src/agent_without_hitl.py`, `check_models.py`, `test_api.py`. `app.yaml` and `deploy.sh` are superseded.
+8. Later, optional: close the forgery gap in the write guard (the gate keeps a private registry of approved ids that the tools check), spam/invalid category, persistent approvals (Firestore), append-only audit log, port to Google ADK with the eval suite as a safety net, Phase 5 enterprise simulation.
 
 ## Decisions
 
@@ -47,6 +47,7 @@ Keep this file short. The detail lives in `Phase4.md` (start with "Getting start
 - Pending approvals live in memory and reset when the instance scales to zero, so Cloud Run runs one instance with one gunicorn worker.
 - A reply that parses but is wrong still looks like a normal proposal. Only failed classifications (parse or API error) are blocked.
 - The comment guard is a set of patterns: it can miss unusual promise wording, does not detect URLs written without a scheme, and has not yet fired on a real model reply.
+- The link paths of the comment guard have not run against a real model reply: no reply in the g35 and g36 runs contained a URL. The unit tests cover them.
 - The write guard stops accidents, not forgery: `Action.approved` is a plain attribute that code can set by hand. Anyone holding a PyGithub client can also write directly.
 - Spam has no category: issues #4 and #5 get labels but no comment.
 - The judge is the same model family as the agent and does not check whether a comment's questions fit the issue (seen on g34).

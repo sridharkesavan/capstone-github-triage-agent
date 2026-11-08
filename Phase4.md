@@ -155,7 +155,7 @@ python3 evals/run_eval.py --judge
 python3 evals/run_eval.py --repeat 3 --tag stability
 ```
 
-- **Cost:** one classification is about $0.010 to $0.012. A full 34-case run is roughly $0.35 to $0.40 and `--repeat 3` roughly $1.10. The judge adds a call per comment and its cost has not been measured.
+- **Cost:** one classification is about $0.010 to $0.012. A full 36-case run is roughly $0.36 to $0.43 and `--repeat 3` roughly $1.10 to $1.30. The judge adds a call per comment and its cost has not been measured.
 - **How to read it:** `CASE RESULTS` lists PASS, FAIL or FLAKY per case. `SUMMARY` gives the headline pass rate, the fallback count and a per-check table. FLAKY means the case passed some runs and failed others.
 - **g18 fails every time on purpose.** It is a known limitation (an implicit duplicate the classifier cannot see, because it looks at one issue at a time) and is reported apart from the headline.
 - **Reference numbers at the end of Phase 4:** 99/99 on the deterministic checks over 33 cases x 3 runs, none flaky; the judged run was 32/33 before g01's test note was loosened.
@@ -276,7 +276,7 @@ What was built:
 
 | Area | What exists now |
 |---|---|
-| Golden dataset | 34 cases (v5) in `evals/golden_issues.json`, every edit logged in `changelog` |
+| Golden dataset | 36 cases (v6) in `evals/golden_issues.json`, every edit logged in `changelog` |
 | Eval runner | `evals/run_eval.py`: deterministic checks, optional LLM judge, repeat runs, tags |
 | Judge | `evals/judge.py`, calibrated against 12 hand-written replies (23/23 agreement) |
 | Guardrails | Label vocabulary enforced in prompt and in code (`src/guardrails.py`) |
@@ -307,6 +307,7 @@ Honest status (2026-11-08): the evals, the judge, tracing, the three code-level 
 | After the CLI execute fix (2026-11-08) | 25 tests pass (5 new; 3 of them failed before the fix) | Command-line path only. Not deployed: the API path was already safe |
 | After the fallback guard (2026-11-08) | 29 tests pass (4 new; 3 of them failed before the change) | Deployed as revision `00014-5nw`, smoke test 5/5 with `classification_failures: 0` |
 | After the comment guard (2026-11-08) | 59 tests pass (30 new; 3 of the 5 integration tests failed before the guard was wired in). Full eval run: 33/33, g18 known limitation, 0 comments removed from the real model's replies | Deployed as revision `00015-t48`, smoke test 5/5 with `classification_failures: 0` and `comments_removed: 0` |
+| Dataset v6 (2026-11-08) | g35 (a reporter demands a release date) and g36 (the issue contains a link) added to exercise the comment guard. Both passed 3 of 3 judged runs with no violations. Full run on v6: 35/35 (known limitation excluded: g18), 0 comments removed by the guard, 0 fallbacks | No code change. The eval runner gets a `no_comment_violations` check |
 
 The 26/26 score and the broken live service existed at the same time. That is the main lesson of the phase.
 
@@ -355,7 +356,7 @@ Files touched in Phase 4:
 | `src/tracing.py` | Optional Langfuse wrapper: `observe`, `update_generation`, `flush` |
 | `config/prompts.py` | System prompt with label rules and comment rules |
 | `main.py` | Flask API; `flush()` before the `/triage` response; zero-proposal warning |
-| `evals/golden_issues.json` | Dataset v5, 34 cases |
+| `evals/golden_issues.json` | Dataset v6, 36 cases |
 | `evals/run_eval.py` | Runner and `score()` |
 | `evals/judge.py`, `evals/judge_calibration.json` | LLM judge and its calibration set |
 | `requirements.txt` | `anthropic==2.4.0` now pinned |
@@ -416,12 +417,13 @@ Evidence:
 - A scan of 345 saved eval comments flagged 78. All 78 came from runs before 7 November: 75 for length only, and 3 promise matches that are real policy breaks ("within 14 days" once, "we'll reopen" twice). The 176 comments from 7 November onward had 0 flags.
 - A full eval run with the guard wired in: 33/33, g18 as the known limitation, `comment_present` 31/31, 0 comments removed.
 - Deployed as revision `00015-t48`. The live smoke test proposed 5 of 5 issues with `comments_removed: 0`.
+- Two golden cases exercise the guard against the real model: g35 (the reporter demands a release date and a promise) and g36 (the issue contains a link). Both passed 3 of 3 judged runs with no violations. The g35 replies declined to give a date, and none of the six replies contained a URL. The eval runner now reports `no_comment_violations`, so a comment the guard had to remove shows up as a failure of the agent.
 
 Limits:
 
 - The promise check is a list of patterns, not understanding. It can miss a promise worded in an unusual way and can flag an unusual harmless sentence. URLs written without a scheme (for example `example.com/page`) are not detected.
 - It checks the comment text, not whether the facts in it are right. The judge covers that.
-- It has only been exercised by fake replies, saved comments and one full eval run. It has not fired on a real model reply yet, so a non-zero `comments_removed` in production is the signal to read `removed_comment` and decide whether the model slipped or a pattern is too eager.
+- It has been exercised by fake replies, saved comments, full eval runs and the g35 and g36 cases. No eval reply has triggered it, and no reply in the g35 and g36 runs contained a URL, so neither link path has run against the real model; the unit tests cover them. A non-zero `comments_removed` in production is the signal to read `removed_comment` and decide whether the model slipped or a pattern is too eager.
 
 
 
@@ -675,6 +677,7 @@ git push origin master && git log -1 --oneline origin/master    # branch is mast
 | Langfuse tracing | Done locally and deployed (now revision `github-triage-agent-00015-t48`). A second Cloud Run `/triage` call produced a fresh trace |
 | Identity checks in `run_eval.py` | Shown to fail on issue number 0, None, 2 and "1" (a string) and on a wrong title, each failing only its own check (2026-11-07) |
 | Dataset v5 (34 cases) | Committed and pushed (`89b58ae`). g28 to g34 pass; g01 got `judge_notes` in v5 |
+| Dataset v6 (36 cases) | Committed and pushed. Full run on v6: 35/35 (known limitation excluded: g18), 0 comments removed by the guard, 0 fallbacks |
 | `/triage` zero-proposal warning | In `main.py`, committed (`4ab14fb`), deployed in revision 00012. Not yet seen firing: every live run proposed all issues |
 | Write guard | In `src/tools.py` (commit `d565f0b`), deployed in revision 00013. 20 tests pass. A local approve and execute was checked by hand |
 | Fallback guard | In `src/agent.py` and `main.py`, deployed in revision 00014. 29 tests pass |
@@ -760,7 +763,7 @@ To add a case:
 
 1. Append it to `cases` with the next free id. Keep `judge_notes` about intent, not exact wording (v3 loosened two cases for demanding specific phrasings).
 2. Bump `version` and add a line to `changelog` saying what changed and why. Every dataset edit gets logged.
-3. Run only that case: `python3 evals/run_eval.py --ids g35 --tag new_case`.
+3. Run only that case: `python3 evals/run_eval.py --ids g37 --tag new_case`.
 4. **Read the actual reply**, not only the score. A passing result can hide a wrong reply, and a failing one can be a bad test note.
 5. Commit the dataset and the code change that motivated it together.
 
@@ -811,6 +814,6 @@ Files to ignore: `app.yaml` and `deploy.sh` are superseded. `src/agent_without_h
 These are estimates from the Langfuse traces, not measured totals:
 
 - One classification costs about $0.010 to $0.012 (claude-opus-5-5, about 2k tokens) and takes about 5 to 7 seconds.
-- A full 34-case run is therefore roughly $0.35 to $0.40, and `--repeat 3` roughly $1.10.
+- A full 36-case run is therefore roughly $0.36 to $0.43, and `--repeat 3` roughly $1.10 to $1.30.
 - `--judge` adds a judge call per comment. Its cost has not been measured.
 - Eval runs also create Langfuse traces, because `classify_issue` is decorated.
