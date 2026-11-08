@@ -9,3 +9,7 @@ venv/
 # eval runs: keep only the baseline
 evals/results/*
 !evals/results/*_baseline.json
+
+# runtime outputs written by the agent
+approval_log.json
+triage_results.json
