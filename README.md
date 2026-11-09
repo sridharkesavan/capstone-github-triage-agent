@@ -12,7 +12,7 @@ GitHub issues -> classify with Claude -> propose actions -> HUMAN APPROVES -> wr
                                                           reject = discarded
 ```
 
-The approval gate is enforced in code, not in the prompt. Each proposed action has a unique id. Only actions that were approved by id can reach the GitHub write calls, and each approval executes once.
+The approval gate is enforced in code, not in the prompt. Each proposed action has a unique id. Only actions that were approved by id can reach the GitHub write calls, each approval executes once, and the write methods themselves refuse anything that is not an approved action. Two more checks run on every classification: a failed classification is marked and never proposed, and a comment with a link the issue does not contain, a promise, or more than 800 characters is removed before it is proposed.
 
 ## Status
 
@@ -21,7 +21,7 @@ The approval gate is enforced in code, not in the prompt. Each proposed action h
 | 1 | Local classifier (read-only) | Done |
 | 2 | Human-in-the-loop approval gate (CLI) | Done |
 | 3 | REST API, Docker, Cloud Run (private) | Done, verified end to end |
-| 4 | Evals, guardrails and tracing | Done, with open items: golden dataset, eval runner and judge, label guardrail and optional Langfuse tracing are deployed; the approved-action write guard and judge tracing are not written (see `Phase4.md` section 10) |
+| 4 | Evals, guardrails and tracing | Done, with open items: the golden dataset (36 cases), the eval runner and LLM judge, three code-level guards (approved-action writes, failed classifications, comment text) and optional Langfuse tracing are deployed; tracing of the judge and some housekeeping are open (see `Phase4.md` section 10 and `NOTES.md`) |
 | 5 | Enterprise deployment simulation | Optional, later |
 
 Details for each phase: `Phase1.md`, `Phase2.md`, `Phase3.md`, `Phase4.md`. Working notes: `NOTES.md`.
@@ -85,10 +85,11 @@ src/tools.py            GitHub API wrapper (the only code that writes)
 src/hitl_gate.py        approval gate
 src/guardrails.py       label vocabulary enforcement
 src/tracing.py          optional Langfuse tracing
+src/comment_guard.py    comment length, link and promise checks
 config/prompts.py       system prompt and output format
 main.py                 Flask API
 Dockerfile              container for Cloud Run
-tests/                  approval-gate and guardrail tests
+tests/                  unit tests, no network: approval gate, write guard, CLI execute, fallback and comment guards
 evals/                  golden dataset, eval runner, LLM judge
 Phase1.md .. Phase4.md  per-phase documentation
 ```
